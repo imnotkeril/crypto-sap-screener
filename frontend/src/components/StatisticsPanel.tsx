@@ -5,44 +5,44 @@ interface StatisticsPanelProps {
   stats: Statistics;
 }
 
+const StatCard: React.FC<{ label: string; value: string; sub: string; subClass?: string; valueClass?: string }> = ({
+  label,
+  value,
+  sub,
+  subClass = 'text-muted',
+  valueClass = 'text-white',
+}) => (
+  <div className="rounded border border-dark-border bg-dark-surface p-4">
+    <div className="text-2xs font-medium uppercase tracking-wider text-muted">{label}</div>
+    <div className={`mt-2 text-2xl font-light ${valueClass}`}>{value}</div>
+    <div className={`mt-1 text-2xs ${subClass}`}>{sub}</div>
+  </div>
+);
+
 const StatisticsPanel: React.FC<StatisticsPanelProps> = ({ stats }) => {
   return (
-    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-      <div className="bg-gradient-to-br from-[#111118] to-[#0a0a0f] border border-[#1a1a24] rounded-xl p-5 backdrop-blur-sm hover:border-emerald-500/30 transition-colors">
-        <div className="text-xs font-medium text-gray-400 mb-2 uppercase tracking-wider">Total Pairs</div>
-        <div className="text-3xl font-light text-white mb-1">{stats.total_pairs}</div>
-        <div className="flex items-center gap-1.5">
-          <div className="w-1.5 h-1.5 bg-emerald-400 rounded-full animate-pulse"></div>
-          <div className="text-xs text-gray-500">Active</div>
-        </div>
-      </div>
-      
-      <div className="bg-gradient-to-br from-[#111118] to-[#0a0a0f] border border-[#1a1a24] rounded-xl p-5 backdrop-blur-sm">
-        <div className="text-xs font-medium text-gray-400 mb-2 uppercase tracking-wider">Avg Correlation</div>
-        <div className="text-3xl font-light text-emerald-400 mb-1">
-          {stats.avg_correlation.toFixed(3)}
-        </div>
-        <div className="text-xs text-gray-500">Mean</div>
-      </div>
-      
-      <div className="bg-gradient-to-br from-[#111118] to-[#0a0a0f] border border-[#1a1a24] rounded-xl p-5 backdrop-blur-sm">
-        <div className="text-xs font-medium text-gray-400 mb-2 uppercase tracking-wider">Avg ADF p-value</div>
-        <div className="text-3xl font-light text-teal-400 mb-1">
-          {stats.avg_adf_pvalue.toFixed(4)}
-        </div>
-        <div className="text-xs text-gray-500">Cointegrated</div>
-      </div>
-      
+    <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+      <StatCard label="Total pairs" value={String(stats.total_pairs)} sub="Active" />
+      <StatCard
+        label="Avg correlation"
+        value={stats.avg_correlation.toFixed(3)}
+        sub="Mean"
+        valueClass="text-accent"
+      />
+      <StatCard
+        label="Avg ADF p-value"
+        value={stats.avg_adf_pvalue.toFixed(4)}
+        sub="Cointegrated"
+        valueClass="text-sky-400"
+      />
       {stats.avg_hurst !== null && stats.avg_hurst !== undefined && (
-        <div className="bg-gradient-to-br from-[#111118] to-[#0a0a0f] border border-[#1a1a24] rounded-xl p-5 backdrop-blur-sm">
-          <div className="text-xs font-medium text-gray-400 mb-2 uppercase tracking-wider">Avg Hurst</div>
-          <div className={`text-3xl font-light mb-1 ${stats.avg_hurst < 0.5 ? 'text-emerald-400' : 'text-orange-400'}`}>
-            {stats.avg_hurst.toFixed(3)}
-          </div>
-          <div className="text-xs text-gray-500">
-            {stats.avg_hurst < 0.5 ? 'Mean Reverting' : 'Trending'}
-          </div>
-        </div>
+        <StatCard
+          label="Avg Hurst"
+          value={stats.avg_hurst.toFixed(3)}
+          sub={stats.avg_hurst < 0.5 ? 'Mean reverting' : 'Trending'}
+          valueClass={stats.avg_hurst < 0.5 ? 'text-accent' : 'text-warn'}
+          subClass={stats.avg_hurst < 0.5 ? 'text-accent/70' : 'text-warn/70'}
+        />
       )}
     </div>
   );

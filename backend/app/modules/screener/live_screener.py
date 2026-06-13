@@ -41,6 +41,78 @@ class LiveScreener:
         # History storage (keep last 100 sessions for trend analysis)
         self.results_history: List[Dict] = []
         self.max_history_size = 100
+
+        # On cold start (serverless), try to restore the most recent
+        # screening results from the database so the API has data to
+        # serve without waiting for a new screening run.
+        self._load_from_db()
+
+    def _load_from_db(self):
+        """Load the most recent screening session's results from the database, if any."""
+        if SessionLocal is None:
+            return
+        db = SessionLocal()
+        try:
+            from app.database import PairsScreeningResult
+            latest_session = (
+                db.query(ScreeningSession)
+                .order_by(ScreeningSession.completed_at.desc().nullslast(), ScreeningSession.started_at.desc())
+                .first()
+            )
+            if latest_session is None:
+                return
+
+            rows = (
+                db.query(PairsScreeningResult)
+                .filter(PairsScreeningResult.session_id == latest_session.id)
+                .order_by(PairsScreeningResult.composite_score.desc().nullslast())
+                .all()
+            )
+            if not rows:
+                return
+
+            results = []
+            for r in rows:
+                results.append({
+                    'id': r.id,
+                    'asset_a': r.asset_a,
+                    'asset_b': r.asset_b,
+                    'correlation': r.correlation,
+                    'adf_pvalue': r.adf_pvalue,
+                    'adf_statistic': r.adf_statistic,
+                    'beta': r.beta,
+                    'alpha': r.alpha,
+                    'spread_std': r.spread_std,
+                    'hurst_exponent': r.hurst_exponent,
+                    'screening_date': r.screening_date,
+                    'lookback_days': r.lookback_days,
+                    'mean_spread': r.mean_spread,
+                    'min_correlation': r.min_correlation_window,
+                    'max_correlation': r.max_correlation_window,
+                    'composite_score': r.composite_score,
+                    'current_zscore': r.current_zscore,
+                    'session_id': r.session_id,
+                })
+
+            self.current_results = results
+            self.last_screening_time = latest_session.completed_at or latest_session.started_at
+            self.last_session_info = {
+                'id': latest_session.id,
+                'started_at': latest_session.started_at.isoformat() if latest_session.started_at else None,
+                'completed_at': latest_session.completed_at.isoformat() if latest_session.completed_at else None,
+                'total_pairs_tested': latest_session.total_pairs_tested,
+                'pairs_found': len(results),
+                'status': latest_session.status,
+                'config': latest_session.config,
+            }
+            logger.info(f"Restored {len(results)} pairs from database (session {latest_session.id})")
+        except Exception as e:
+            logger.warning(f"Could not load screening results from database: {e}")
+        finally:
+            try:
+                db.close()
+            except Exception:
+                pass
     
     def start(self):
         """Start the live screener"""
@@ -126,17 +198,57 @@ class LiveScreener:
         try:
             logger.info(f"Starting live screening at {datetime.utcnow()}")
             start_time = datetime.utcnow()
-            
-            session_id = int(start_time.timestamp())
+
             results = []
             total_pairs_tested = 0
 
-            # Run screener WITHOUT database - use memory only
-            screener = PairsScreener(db=None)
-            out = screener.screen_pairs(self.config, session_id=session_id, return_stats=True)
-            results = out.get("results", []) if isinstance(out, dict) else (out or [])
-            stats = out.get("stats", {}) if isinstance(out, dict) else {}
-            total_pairs_tested = int(stats.get("pairs_generated", 0) or 0)
+            # Persist results to the database when available (required for
+            # serverless deployments where in-memory state does not survive
+            # across invocations).
+            db = SessionLocal() if SessionLocal is not None else None
+            session_id = int(start_time.timestamp())
+            db_session = None
+            if db is not None:
+                try:
+                    db_session = ScreeningSession(
+                        started_at=start_time,
+                        status="running",
+                        config={
+                            'lookback_days': self.config.lookback_days,
+                            'min_correlation': self.config.min_correlation,
+                            'max_adf_pvalue': self.config.max_adf_pvalue,
+                            'include_hurst': self.config.include_hurst,
+                        },
+                    )
+                    db.add(db_session)
+                    db.commit()
+                    session_id = db_session.id
+                except Exception as e:
+                    logger.warning(f"Could not create screening session in database: {e}")
+                    db_session = None
+
+            try:
+                screener = PairsScreener(db=db)
+                out = screener.screen_pairs(self.config, session_id=session_id, return_stats=True)
+                results = out.get("results", []) if isinstance(out, dict) else (out or [])
+                stats = out.get("stats", {}) if isinstance(out, dict) else {}
+                total_pairs_tested = int(stats.get("pairs_generated", 0) or 0)
+
+                if db is not None and db_session is not None:
+                    try:
+                        db_session.completed_at = datetime.utcnow()
+                        db_session.status = "completed"
+                        db_session.total_pairs_tested = total_pairs_tested
+                        db_session.pairs_found = len(results)
+                        db.commit()
+                    except Exception as e:
+                        logger.warning(f"Could not finalize screening session in database: {e}")
+            finally:
+                if db is not None:
+                    try:
+                        db.close()
+                    except Exception:
+                        pass
             
             # Check alerts after screening
             try:
