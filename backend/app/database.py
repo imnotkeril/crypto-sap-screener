@@ -179,6 +179,7 @@ class PairsScreeningResult(Base):
     adf_pvalue = Column(Float)
     adf_statistic = Column(Float)
     beta = Column(Float)  # Hedge ratio
+    alpha = Column(Float, nullable=True)  # Intercept
     spread_std = Column(Float)  # σ_ε
     hurst_exponent = Column(Float, nullable=True)
     screening_date = Column(DateTime, default=datetime.utcnow)
@@ -209,6 +210,21 @@ class PriceDataCache(Base):
     __table_args__ = (
         UniqueConstraint('symbol', 'date', name='uq_symbol_date'),
     )
+
+
+class IntradaySnapshot(Base):
+    """Persisted intraday z-score snapshot for a pair (used for sparkline history)"""
+    __tablename__ = "intraday_snapshots"
+
+    id = Column(Integer, primary_key=True, index=True)
+    asset_a = Column(String, index=True)
+    asset_b = Column(String, index=True)
+    price_a = Column(Float)
+    price_b = Column(Float)
+    beta = Column(Float)
+    spread = Column(Float)
+    zscore = Column(Float)
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
 
 
 class Alert(Base):
