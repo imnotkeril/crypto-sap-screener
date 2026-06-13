@@ -2,6 +2,25 @@
 name = "crypto-sap-screener-backend"
 version = "1.0.0"
 requires-python = ">=3.11"
+dependencies = [
+    "fastapi==0.104.1",
+    "uvicorn[standard]==0.24.0",
+    "sqlalchemy==2.0.23",
+    "alembic==1.12.1",
+    "psycopg2-binary==2.9.9",
+    "pydantic==2.5.0",
+    "pydantic-settings==2.1.0",
+    "ccxt>=4.0.0",
+    "pandas>=2.2.0",
+    "numpy>=1.26.0",
+    "statsmodels>=0.14.1",
+    "scipy==1.11.4",
+    "python-dotenv==1.0.0",
+    "redis==5.0.1",
+    "httpx==0.25.1",
+    "python-multipart==0.0.6",
+    "openpyxl>=3.1.0",
+]
 
 [tool.vercel]
 entrypoint = "backend.serverless_entry:app"
