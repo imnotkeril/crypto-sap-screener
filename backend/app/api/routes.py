@@ -35,6 +35,36 @@ logger = logging.getLogger(__name__)
 _screening_in_progress = False
 
 
+@router.get("/debug/db")
+async def debug_db():
+    """Temporary diagnostic endpoint to check DB connectivity."""
+    import traceback
+    from app.config import settings
+    from app.database import engine, make_url
+    result = {"database_url_set": bool(settings.DATABASE_URL)}
+    try:
+        u = make_url(settings.DATABASE_URL)
+        result["url_drivername"] = u.drivername
+        result["url_host"] = u.host
+        result["url_port"] = u.port
+        result["url_database"] = u.database
+        result["url_username"] = u.username
+    except Exception as e:
+        result["url_parse_error"] = str(e)
+    try:
+        if engine is None:
+            result["engine"] = None
+        else:
+            from sqlalchemy import text
+            with engine.connect() as conn:
+                conn.execute(text("SELECT 1"))
+            result["connection"] = "ok"
+    except Exception as e:
+        result["connection_error"] = str(e)
+        result["traceback"] = traceback.format_exc()
+    return result
+
+
 @router.get("/sessions")
 async def get_screening_sessions(limit: int = 50, db: Session = Depends(get_db)):
     """Get persisted screening sessions (history)."""
