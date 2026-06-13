@@ -4,10 +4,5 @@
       "path": "/api/v1/screener/cron/run",
       "schedule": "0 0 * * *"
     }
-  ],
-  "functions": {
-    "backend/serverless_entry.py": {
-      "maxDuration": 60
-    }
-  }
+  ]
 }
