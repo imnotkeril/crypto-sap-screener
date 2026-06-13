@@ -180,6 +180,7 @@ class PairsScreener:
                         adf_pvalue=result['adf_pvalue'],
                         adf_statistic=result['adf_statistic'],
                         beta=result['beta'],
+                        alpha=result.get('alpha'),
                         spread_std=result['spread_std'],
                         hurst_exponent=result.get('hurst_exponent'),
                         lookback_days=config.lookback_days,

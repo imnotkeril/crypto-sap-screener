@@ -147,6 +147,26 @@ async def get_screening_status(db: Session = Depends(get_db)):
         )
 
 
+@router.get("/cron/run")
+async def cron_run_screening():
+    """Synchronous screening run for scheduled triggers (e.g. Vercel Cron).
+
+    Runs to completion within the request so it works without a persistent
+    background process.
+    """
+    try:
+        live_screener = get_live_screener()
+        live_screener._run_screening()
+        return {
+            "status": "completed",
+            "pairs_found": len(live_screener.get_results()),
+            "last_session": live_screener.get_last_session(),
+        }
+    except Exception as e:
+        logger.error(f"Cron screening failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Cron screening failed: {str(e)}")
+
+
 @router.post("/run-live")
 async def run_live_screening(background_tasks: BackgroundTasks):
     """Manually trigger live screener to run (fetches fresh data from Binance)"""
