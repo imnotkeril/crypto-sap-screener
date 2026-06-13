@@ -4,4 +4,4 @@ version = "1.0.0"
 requires-python = ">=3.11"
 
 [tool.vercel]
-entrypoint = "backend.app.main:app"
+entrypoint = "backend.serverless_entry:app"
