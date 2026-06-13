@@ -47,6 +47,10 @@ app.include_router(backtester_router, prefix=f"{settings.API_V1_PREFIX}/backtest
 from app.api.routes_positions import router as positions_router
 app.include_router(positions_router, prefix=f"{settings.API_V1_PREFIX}/positions", tags=["positions"])
 
+# Include live intraday monitor router
+from app.api.routes_live import router as live_router
+app.include_router(live_router, prefix=f"{settings.API_V1_PREFIX}/live", tags=["live"])
+
 
 @app.on_event("startup")
 async def _startup():

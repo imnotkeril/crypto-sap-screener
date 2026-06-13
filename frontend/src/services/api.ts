@@ -175,6 +175,35 @@ export interface PairSpreadData {
   return_probabilities_samples?: ReturnProbabilitiesSamples;
 }
 
+export interface LivePairSnapshot {
+  pair_id?: number;
+  asset_a: string;
+  asset_b: string;
+  price_a: number;
+  price_b: number;
+  beta: number;
+  spread: number;
+  zscore: number;
+  daily_zscore: number;
+  zscore_delta: number;
+  is_unusual: boolean;
+  updated_at: string;
+}
+
+export interface LiveSnapshot {
+  pairs: LivePairSnapshot[];
+  last_update: string | null;
+  is_running: boolean;
+  interval_seconds: number;
+  alert_threshold: number;
+  last_error: string | null;
+}
+
+export interface LiveHistoryPoint {
+  t: string;
+  z: number;
+}
+
 export const api = {
   // Get screening status
   getStatus: async (): Promise<ScreeningStatus> => {
@@ -399,6 +428,32 @@ export const api = {
       params: { current_price_a: priceA, current_price_b: priceB },
     });
     return response.data;
+  },
+
+  // Live intraday monitor
+  getLiveSnapshot: async (): Promise<LiveSnapshot> => {
+    try {
+      const response = await apiClient.get('/api/v1/live/snapshot');
+      return response.data;
+    } catch (error) {
+      return {
+        pairs: [],
+        last_update: null,
+        is_running: false,
+        interval_seconds: 15,
+        alert_threshold: 2.5,
+        last_error: 'Backend unavailable',
+      };
+    }
+  },
+
+  getLivePairHistory: async (assetA: string, assetB: string): Promise<LiveHistoryPoint[]> => {
+    try {
+      const response = await apiClient.get(`/api/v1/live/pairs/${assetA}/${assetB}/history`);
+      return response.data.history || [];
+    } catch (error) {
+      return [];
+    }
   },
 };
 

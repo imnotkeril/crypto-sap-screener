@@ -309,6 +309,7 @@ class PairsScreener:
                 'max_correlation': max_corr,
                 'adf_pvalue': adf_pvalue,
                 'adf_statistic': adf_stat,
+                'alpha': float(alpha),
                 'beta': beta,
                 'spread_std': spread_std,
                 'mean_spread': mean_spread,

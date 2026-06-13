@@ -9,7 +9,7 @@
 }
 
 html {
-  background: #0a0a0f;
+  background: #0a0a0d;
 }
 
 body {
@@ -17,15 +17,15 @@ body {
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  background: #0a0a0f !important;
-  color: #e5e5e5 !important;
+  background: #0a0a0d !important;
+  color: #e5e5e9 !important;
   overflow-x: hidden;
   min-height: 100vh;
 }
 
 #root {
   min-height: 100vh;
-  background: #0a0a0f;
+  background: #0a0a0d;
 }
 
 /* Custom scrollbar */
@@ -35,37 +35,38 @@ body {
 }
 
 ::-webkit-scrollbar-track {
-  background: #1a1a24;
+  background: transparent;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #2a2a3a;
+  background: #23232e;
   border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #3a3a4a;
+  background: #32323f;
 }
 
-/* Smooth transitions */
-* {
-  transition: background-color 0.2s, border-color 0.2s, color 0.2s;
+/* Subtle transitions for interactive elements only */
+a, button, [role="button"], input, select {
+  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease, opacity 0.15s ease;
 }
 
-/* Spin animation for loading indicators */
 @keyframes spin {
   to {
     transform: rotate(360deg);
   }
 }
 
-/* Pulse animation for status indicators */
-@keyframes pulse {
+@keyframes pulse-dot {
   0%, 100% {
     opacity: 1;
   }
   50% {
-    opacity: 0.5;
+    opacity: 0.35;
   }
 }
 
+.animate-pulse-dot {
+  animation: pulse-dot 2s ease-in-out infinite;
+}

@@ -26,7 +26,12 @@ class Settings(BaseSettings):
     SCREENER_LOOKBACK_DAYS: int = 365  # 365 days for crypto (24/7 trading)
     SCREENER_MIN_VOLUME_USD: float = 1_000_000  # 1M USD minimum volume
     SCREENER_MAX_ASSETS: int = 100  # Limit to top 100 assets by volume
-    
+
+    # Intraday live monitor
+    INTRADAY_MONITOR_INTERVAL: int = 15  # seconds between live price polls
+    INTRADAY_TOP_PAIRS: int = 20  # number of top daily pairs to track live
+    INTRADAY_ZSCORE_ALERT_THRESHOLD: float = 2.5  # |z| considered an unusual intraday deviation
+
     # API
     API_V1_PREFIX: str = "/api/v1"
     
