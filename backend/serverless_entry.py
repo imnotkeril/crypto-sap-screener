@@ -10,7 +10,18 @@ sys.path - so we do it here.
 """
 import os
 import sys
+import traceback
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from app.main import app  # noqa: E402
+try:
+    from app.main import app  # noqa: E402
+except Exception:
+    _error = traceback.format_exc()
+    from fastapi import FastAPI
+
+    app = FastAPI()
+
+    @app.get("/{path:path}")
+    def _import_error(path: str = ""):
+        return {"import_error": _error}
