@@ -276,17 +276,7 @@ class LiveScreener:
                 
                 self.current_results = results
                 self.last_screening_time = datetime.utcnow()
-                
-                # Create session info
-                n = len(results) if results else 0
-                # Note: We can't easily get exact count here without modifying screen_pairs return value
-                # Using a reasonable estimate - actual count is printed in console during screening
-                # Formula: n_assets * (n_assets - 1) / 2 for all unique pairs
-                # Since we now screen all assets passing filters, this can be thousands of pairs
-                # For now, use a conservative estimate based on results
-                # (In practice, the actual count is logged during screening)
-                total_pairs_tested = max(len(results) * 50, 1000)  # Conservative estimate
-                
+
                 self.last_session_info = {
                     'id': session_id,
                     'started_at': start_time.isoformat(),

@@ -136,13 +136,19 @@ async def get_pair_history_by_symbols(
 
 
 @router.get("/status", response_model=ScreeningStatusResponse)
-async def get_screening_status(db: Session = Depends(get_db)):
+async def get_screening_status(background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
     """Get current screening status from live screener"""
     try:
         live_screener = get_live_screener()
         status = live_screener.get_status()
         last_session = live_screener.get_last_session()
-        
+
+        # Cold start: no screening session has ever run (e.g. first deploy,
+        # empty database). Kick off a screening run in the background so the
+        # UI doesn't stay stuck on "Initializing screener..." forever.
+        if last_session is None and not status['is_running']:
+            background_tasks.add_task(live_screener._run_screening)
+
         last_session_response = None
         if last_session:
             # Parse datetime strings
