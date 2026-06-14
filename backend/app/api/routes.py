@@ -385,7 +385,7 @@ async def get_screening_results(
             if isinstance(screening_date, str):
                 try:
                     screening_date = datetime.fromisoformat(screening_date.replace('Z', '+00:00'))
-                except:
+                except (ValueError, TypeError):
                     screening_date = datetime.utcnow()
             
             pair_result = PairResult(
@@ -464,7 +464,7 @@ async def get_pair_details(pair_id: int, db: Session = Depends(get_db)):
         if isinstance(screening_date, str):
             try:
                 screening_date = datetime.fromisoformat(screening_date.replace('Z', '+00:00'))
-            except:
+            except (ValueError, TypeError):
                 screening_date = datetime.utcnow()
         
         return PairResult(
@@ -662,7 +662,8 @@ async def get_pair_spread_data(pair_id: int):
                 model = OLS(y, X_with_const).fit()
                 last_alpha = model.params[0]
                 last_beta = model.params[1]
-            except:
+            except Exception as e:
+                logger.warning(f"Rolling OLS for hedged price failed, using fallback beta/alpha: {e}")
                 last_alpha = pair.get('alpha', 0)
                 last_beta = pair['beta']
         else:
