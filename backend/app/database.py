@@ -86,8 +86,9 @@ try:
         # SQLite needs this for multithreaded FastAPI usage.
         connect_args = {"check_same_thread": False}
     elif "postgresql" in db_url.lower() or "postgres" in db_url.lower():
-        # PostgreSQL: ensure proper encoding is set
-        connect_args = {"client_encoding": "UTF8"}
+        # PostgreSQL: ensure proper encoding is set and fail fast on connection
+        # issues instead of hanging past the frontend's request timeout.
+        connect_args = {"client_encoding": "UTF8", "connect_timeout": 5}
     
     # Create engine with explicit encoding handling
     engine = create_engine(
@@ -133,17 +134,6 @@ except Exception as e:
     logging.debug(traceback.format_exc())
     engine = None
     SessionLocal = None
-
-    # #region agent log
-    agent_log(
-        session_id="debug-session",
-        run_id="pre-fix",
-        hypothesis_id="H2",
-        location="backend/app/database.py:ENGINE_CREATE:EXCEPT",
-        message="engine creation failed",
-        data={"errorType": type(e).__name__, "error": str(e), "db_url_encoded": db_url if "db_url" in locals() else None},
-    )
-    # #endregion
 
 Base = declarative_base()
 
