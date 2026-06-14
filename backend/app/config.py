@@ -2,6 +2,7 @@
 Configuration settings for the application
 """
 from pydantic_settings import BaseSettings
+from pydantic import field_validator
 from typing import Optional
 import os
 
@@ -12,6 +13,14 @@ class Settings(BaseSettings):
     # Default to SQLite for a single-file persistence experience.
     # Override via .env / env var DATABASE_URL when needed (e.g., PostgreSQL on a server).
     DATABASE_URL: str = "sqlite:///./data/stat_arb.db"
+
+    @field_validator("DATABASE_URL", mode="before")
+    @classmethod
+    def _strip_database_url(cls, v: str) -> str:
+        """Strip stray whitespace/newlines (e.g. from copy-pasting into env vars)."""
+        if isinstance(v, str):
+            return v.strip()
+        return v
     
     # Redis (optional)
     REDIS_URL: Optional[str] = "redis://localhost:6379"
