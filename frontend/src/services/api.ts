@@ -433,7 +433,9 @@ export const api = {
   // Live intraday monitor
   getLiveSnapshot: async (): Promise<LiveSnapshot> => {
     try {
-      const response = await apiClient.get('/api/v1/live/snapshot');
+      // This endpoint fetches live prices from Binance synchronously and can
+      // take longer than the default timeout, especially on cold starts.
+      const response = await apiClient.get('/api/v1/live/snapshot', { timeout: 25000 });
       return response.data;
     } catch (error) {
       return {
