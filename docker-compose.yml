@@ -4,7 +4,7 @@
 #   docker compose up -d --build
 #
 # Then open:
-#   - Frontend:    http://localhost:3000
+#   - Frontend:    http://localhost:3100
 #   - Backend API: http://localhost:8000
 #   - Data layer:  http://localhost:8001/health
 #
@@ -78,7 +78,7 @@ services:
       - ./frontend:/app
       - frontend-node-modules:/app/node_modules
     ports:
-      - "3000:5173"
+      - "3100:5173"
     depends_on:
       - backend
 
