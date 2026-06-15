@@ -391,28 +391,6 @@ def get_db():
             return
         
         yield db
-    except UnicodeDecodeError as e:
-        # Handle encoding errors specifically
-        import logging
-        logger = logging.getLogger(__name__)
-        logger.error(f"Unicode decode error in database connection: {e}")
-        if db:
-            try:
-                db.close()
-            except:
-                pass
-        yield None
-    except Exception as e:
-        # Database connection error (e.g., connection refused)
-        import logging
-        logger = logging.getLogger(__name__)
-        logger.debug(f"Database connection error: {e}")
-        if db:
-            try:
-                db.close()
-            except:
-                pass
-        yield None
     finally:
         if db:
             try:

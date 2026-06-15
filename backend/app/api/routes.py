@@ -214,12 +214,14 @@ async def run_live_screening(background_tasks: BackgroundTasks):
         
         # Run in background
         background_tasks.add_task(live_screener._run_screening)
-        
+
         return {
             "message": "Live screening started",
             "status": "running",
             "note": "Fetching fresh asset list from Binance..."
         }
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error starting live screening: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to start screening: {str(e)}")
