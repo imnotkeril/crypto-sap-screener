@@ -27,6 +27,12 @@ logger = logging.getLogger(__name__)
 
 HISTORY_LEN = 240  # samples kept per pair for sparkline/history
 
+# If the live z-score has drifted this many std-devs away from the daily-fit
+# z-score, the daily hedge ratio/spread stats no longer describe the current
+# relationship (stale fit, price-scale mismatch, etc.) - exclude the pair
+# rather than showing a meaningless "extreme" reading.
+MAX_ZSCORE_DELTA = 5.0
+
 
 def _pair_key(asset_a: str, asset_b: str) -> str:
     return f"{asset_a}_{asset_b}"
@@ -142,6 +148,16 @@ class IntradayMonitor:
             spread_now = float(pa - (alpha + beta * pb))
             zscore = float((spread_now - mean_spread) / std) if std else 0.0
             daily_zscore = float(r.get('current_zscore', 0.0) or 0.0)
+
+            # If live re-pricing has blown the z-score wildly off from the
+            # daily fit, the fit is stale rather than the spread being a real
+            # "extreme" trade - drop it rather than show garbage numbers.
+            if abs(zscore - daily_zscore) > MAX_ZSCORE_DELTA:
+                logger.debug(
+                    f"Intraday monitor: dropping {a}/{b}, live z={zscore:.2f} vs "
+                    f"daily z={daily_zscore:.2f} (stale fit)"
+                )
+                continue
 
             entry = {
                 'pair_id': r.get('id'),
