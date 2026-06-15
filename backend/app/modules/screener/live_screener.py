@@ -264,33 +264,44 @@ class LiveScreener:
             
             # Update in-memory storage (thread-safe)
             with self._lock:
-                # Save to history before updating
-                if self.current_results:
-                    self.results_history.append({
-                        'timestamp': start_time.isoformat(),
-                        'results': self.current_results.copy()
-                    })
-                    # Keep only last N sessions
-                    if len(self.results_history) > self.max_history_size:
-                        self.results_history = self.results_history[-self.max_history_size:]
-                
-                self.current_results = results
-                self.last_screening_time = datetime.utcnow()
+                if not results and self.current_results:
+                    # An empty result set from a run that previously had data
+                    # usually means the run was degraded (e.g. exchange rate
+                    # limiting cut the scan short) rather than that no pairs
+                    # qualify anymore. Keep serving the last good results
+                    # instead of wiping them out.
+                    logger.warning(
+                        f"Live screening found 0 pairs (tested {total_pairs_tested}); "
+                        f"keeping previous {len(self.current_results)} results"
+                    )
+                else:
+                    # Save to history before updating
+                    if self.current_results:
+                        self.results_history.append({
+                            'timestamp': start_time.isoformat(),
+                            'results': self.current_results.copy()
+                        })
+                        # Keep only last N sessions
+                        if len(self.results_history) > self.max_history_size:
+                            self.results_history = self.results_history[-self.max_history_size:]
 
-                self.last_session_info = {
-                    'id': session_id,
-                    'started_at': start_time.isoformat(),
-                    'completed_at': self.last_screening_time.isoformat(),
-                    'total_pairs_tested': total_pairs_tested,
-                    'pairs_found': len(results),
-                    'status': 'completed',
-                    'config': {
-                        'lookback_days': self.config.lookback_days,
-                        'min_correlation': self.config.min_correlation,
-                        'max_adf_pvalue': self.config.max_adf_pvalue,
-                        'include_hurst': self.config.include_hurst
+                    self.current_results = results
+                    self.last_session_info = {
+                        'id': session_id,
+                        'started_at': start_time.isoformat(),
+                        'completed_at': datetime.utcnow().isoformat(),
+                        'total_pairs_tested': total_pairs_tested,
+                        'pairs_found': len(results),
+                        'status': 'completed',
+                        'config': {
+                            'lookback_days': self.config.lookback_days,
+                            'min_correlation': self.config.min_correlation,
+                            'max_adf_pvalue': self.config.max_adf_pvalue,
+                            'include_hurst': self.config.include_hurst
+                        }
                     }
-                }
+
+                self.last_screening_time = datetime.utcnow()
             
             logger.info(f"Live screening completed: {len(results)} pairs found")
             
