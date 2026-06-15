@@ -1,13 +1,34 @@
-# Market Data Layer - Railway Deployment
+# Market Data Layer - Deployment
 
 The data layer (`backend/app/data_layer/`) is a persistent service - it
 keeps a WebSocket connection open to Binance, runs backfill, and serves
 candles/ticker/indicators over HTTP. This **cannot run on Vercel**
 (serverless functions can't hold long-lived connections or background
-loops), so it runs as its own Railway service alongside the existing
-backend API service.
+loops).
 
-## Setup
+## Option A: Run locally with Docker (free)
+
+A self-contained `docker-compose.datalayer.yml` is provided at the repo
+root, including its own Redis and Postgres containers - no external
+services or paid hosting required:
+
+```bash
+docker compose -f docker-compose.datalayer.yml up -d --build
+```
+
+Then check `http://localhost:8001/health`. Data is persisted in Docker
+volumes (`datalayer-redis`, `datalayer-postgres`) across restarts.
+
+To point the screener at it, set `DATA_LAYER_URL=http://localhost:8001`
+(or the container's address, e.g. `http://datalayer:8001` if the screener
+also runs in Docker on the same network).
+
+## Option B: Railway (paid)
+
+Runs as its own Railway service alongside the existing backend API
+service.
+
+## Setup (Railway)
 
 1. In Railway, create a **new service** in the same project, pointing at
    this repository (same repo as the existing backend service).
