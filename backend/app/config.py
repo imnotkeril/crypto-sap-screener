@@ -24,6 +24,11 @@ class Settings(BaseSettings):
     
     # Redis (optional)
     REDIS_URL: Optional[str] = "redis://localhost:6379"
+
+    # Market Data Layer (optional) - if set, the live intraday monitor reads
+    # ticker prices from this service's HTTP API (real-time via WebSocket)
+    # instead of querying Binance directly via ccxt.
+    DATA_LAYER_URL: Optional[str] = None
     
     # Binance API
     BINANCE_API_KEY: Optional[str] = None
