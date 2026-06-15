@@ -21,7 +21,12 @@ volumes (`datalayer-redis`, `datalayer-postgres`) across restarts.
 
 To point the screener at it, set `DATA_LAYER_URL=http://localhost:8001`
 (or the container's address, e.g. `http://datalayer:8001` if the screener
-also runs in Docker on the same network).
+also runs in Docker on the same network) as an env var on the main backend
+process. When set, the live intraday monitor
+(`backend/app/modules/screener/intraday_monitor.py`) reads ticker prices
+from the data layer's Redis-backed cache instead of calling Binance via
+ccxt on every request. If the data layer is unreachable, it falls back to
+the direct ccxt call automatically.
 
 ## Option B: Railway (paid)
 
