@@ -16,6 +16,8 @@ import logging
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional
 
+import httpx
+
 from app.modules.screener.data_loader import DataLoader
 from app.modules.screener.live_screener import get_live_screener
 from app.database import SessionLocal, IntradaySnapshot
@@ -197,6 +199,32 @@ class IntradayMonitor:
                 pass
 
     def _fetch_prices(self, symbols) -> Dict[str, float]:
+        """Fetch last traded prices for a set of base symbols."""
+        if settings.DATA_LAYER_URL:
+            prices = self._fetch_prices_from_data_layer(symbols)
+            if prices:
+                return prices
+
+        return self._fetch_prices_from_exchange(symbols)
+
+    def _fetch_prices_from_data_layer(self, symbols) -> Dict[str, float]:
+        """Fetch real-time prices from the Market Data Layer's ticker cache."""
+        prices: Dict[str, float] = {}
+        try:
+            with httpx.Client(base_url=settings.DATA_LAYER_URL, timeout=3.0) as client:
+                for base in symbols:
+                    resp = client.get("/ticker", params={"symbol": f"{base}/USDT"})
+                    if resp.status_code != 200:
+                        continue
+                    last = resp.json().get("last")
+                    if last:
+                        prices[base] = float(last)
+        except Exception as e:
+            logger.warning(f"Intraday monitor: data layer price fetch failed: {e}")
+            return {}
+        return prices
+
+    def _fetch_prices_from_exchange(self, symbols) -> Dict[str, float]:
         """Fetch last traded prices for a set of base symbols via Binance tickers."""
         exchange = self.data_loader.exchange
         prices: Dict[str, float] = {}
