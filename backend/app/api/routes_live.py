@@ -18,8 +18,6 @@ logger = logging.getLogger(__name__)
 async def get_live_snapshot():
     """Get the latest intraday z-score snapshot for the top daily pairs."""
     monitor = get_intraday_monitor()
-    if not monitor.is_running:
-        monitor.start()
     return monitor.get_snapshot()
 
 

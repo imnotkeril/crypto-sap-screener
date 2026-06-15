@@ -1,0 +1,59 @@
+version: "3.8"
+
+# Local/self-hosted run of the Market Data Layer (backend/app/data_layer).
+#
+# Usage:
+#   docker compose -f docker-compose.datalayer.yml up -d
+#
+# This starts:
+#   - redis     (real-time ticker/candle/indicator cache)
+#   - postgres  (historical candle storage)
+#   - datalayer (the ingestion + serving service, http://localhost:8001)
+#
+# Health check: curl http://localhost:8001/health
+
+services:
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - datalayer-redis:/data
+
+  postgres:
+    image: postgres:15-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: datalayer
+      POSTGRES_PASSWORD: datalayer
+      POSTGRES_DB: datalayer
+    ports:
+      - "5432:5432"
+    volumes:
+      - datalayer-postgres:/var/lib/postgresql/data
+
+  datalayer:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    command: ["python", "-m", "app.data_layer.main"]
+    working_dir: /app/backend
+    environment:
+      PORT: "8001"
+      REDIS_URL: redis://redis:6379
+      DATABASE_URL: postgresql://datalayer:datalayer@postgres:5432/datalayer
+      # Optional overrides:
+      # DATALAYER_SYMBOLS: BTC/USDT,ETH/USDT,SOL/USDT
+      # DATALAYER_TIMEFRAMES: 1m,5m,15m,1h,4h,1d
+      # DATALAYER_HISTORY_START: "2023-01-01"
+    ports:
+      - "8001:8001"
+    depends_on:
+      - redis
+      - postgres
+
+volumes:
+  datalayer-redis:
+  datalayer-postgres:

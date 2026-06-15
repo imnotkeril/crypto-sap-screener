@@ -77,14 +77,11 @@ class PositionCalculator:
             direction_b = "short"
         
         if strategy == PositionStrategy.DOLLAR_NEUTRAL:
-            # Long $X in one asset, Short $X*beta in the other
-            if direction_a == "long":
-                dollar_a = capital
-                dollar_b = capital * beta
-            else:
-                dollar_a = capital
-                dollar_b = capital * beta
-                
+            # Asset A always gets $X, asset B gets $X*beta - the actual
+            # long/short side for each is set above based on the z-score.
+            dollar_a = capital
+            dollar_b = capital * beta
+
         elif strategy == PositionStrategy.EQUAL_DOLLAR:
             # Split capital equally, then apply beta
             dollar_a = capital / 2
