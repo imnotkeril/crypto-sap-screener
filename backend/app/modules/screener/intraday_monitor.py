@@ -135,26 +135,26 @@ class IntradayMonitor:
                 continue
 
             alpha = r.get('alpha', 0.0) or 0.0
-            beta = r['beta']
+            beta = float(r['beta'])
             mean_spread = r.get('mean_spread', 0.0) or 0.0
             std = r.get('spread_std') or 1.0
 
-            spread_now = pa - (alpha + beta * pb)
-            zscore = (spread_now - mean_spread) / std if std else 0.0
-            daily_zscore = r.get('current_zscore', 0.0) or 0.0
+            spread_now = float(pa - (alpha + beta * pb))
+            zscore = float((spread_now - mean_spread) / std) if std else 0.0
+            daily_zscore = float(r.get('current_zscore', 0.0) or 0.0)
 
             entry = {
                 'pair_id': r.get('id'),
                 'asset_a': a,
                 'asset_b': b,
-                'price_a': pa,
-                'price_b': pb,
+                'price_a': float(pa),
+                'price_b': float(pb),
                 'beta': beta,
                 'spread': spread_now,
                 'zscore': zscore,
                 'daily_zscore': daily_zscore,
                 'zscore_delta': zscore - daily_zscore,
-                'is_unusual': abs(zscore) >= self.alert_threshold,
+                'is_unusual': bool(abs(zscore) >= self.alert_threshold),
                 'updated_at': now.isoformat(),
             }
             snapshot.append(entry)
