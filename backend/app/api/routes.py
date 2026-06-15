@@ -244,6 +244,7 @@ async def run_screening(
         assets=config.assets,
         max_assets=config.max_assets,
         lookback_days=config.lookback_days,
+        timeframe=config.timeframe,
         min_correlation=config.min_correlation,
         max_adf_pvalue=config.max_adf_pvalue,
         include_hurst=config.include_hurst,
@@ -299,6 +300,7 @@ def _run_screening_background(session_id: int, config: ScreeningConfig):
                 'status': 'completed',
                 'config': {
                     'lookback_days': config.lookback_days,
+                    'timeframe': config.timeframe,
                     'min_correlation': config.min_correlation,
                     'max_adf_pvalue': config.max_adf_pvalue,
                     'include_hurst': config.include_hurst
@@ -402,6 +404,7 @@ async def get_screening_results(
                 hurst_exponent=result.get('hurst_exponent'),
                 screening_date=screening_date,
                 lookback_days=result.get('lookback_days', 365),
+                timeframe=result.get('timeframe'),
                 mean_spread=result.get('mean_spread'),
                 min_correlation_window=result.get('min_correlation'),  # screener uses 'min_correlation' key
                 max_correlation_window=result.get('max_correlation'),  # screener uses 'max_correlation' key

@@ -9,7 +9,7 @@ from datetime import datetime
 import pandas as pd
 import logging
 
-from app.modules.screener.data_loader import DataLoader
+from app.modules.screener.data_loader import DataLoader, bars_for_lookback
 from app.modules.screener.cointegration import CointegrationTester
 from app.modules.screener.correlation import CorrelationAnalyzer
 from app.modules.screener.hurst import HurstCalculator
@@ -62,9 +62,9 @@ class PairsScreener:
         
         # Step 2: Check data availability for each asset BEFORE forming pairs
         # This is the optimization: filter out assets with insufficient data early
-        logger.info(f"Step 2: Checking data availability for {len(assets)} assets (requested: {config.lookback_days} days)")
-        min_required_days = int(config.lookback_days * 0.8)  # At least 80% of requested days
-        
+        logger.info(f"Step 2: Checking data availability for {len(assets)} assets (requested: {config.lookback_days} days @ {config.timeframe})")
+        min_required_bars = int(bars_for_lookback(config.lookback_days, config.timeframe) * 0.8)  # At least 80% of requested bars
+
         valid_assets = []
         preload_workers = min(4, len(assets))
         with ThreadPoolExecutor(max_workers=preload_workers) as preload_executor:
@@ -73,23 +73,24 @@ class PairsScreener:
                     self.data_loader.get_price_series,
                     asset,
                     config.lookback_days,
-                    self.db
+                    self.db,
+                    config.timeframe
                 )
                 for asset in assets
             }
-            
+
             # Check each asset's data availability
             for asset, future in preload_futures.items():
                 try:
                     price_series = future.result(timeout=60)
-                    days_available = len(price_series)
-                    
-                    if days_available >= min_required_days:
+                    bars_available = len(price_series)
+
+                    if bars_available >= min_required_bars:
                         valid_assets.append(asset)
-                        if days_available < config.lookback_days:
-                            logger.debug(f"{asset}: {days_available} days available (requested {config.lookback_days}, using {days_available})")
+                        if bars_available < bars_for_lookback(config.lookback_days, config.timeframe):
+                            logger.debug(f"{asset}: {bars_available} bars available (requested {config.lookback_days} days @ {config.timeframe}, using {bars_available})")
                     else:
-                        logger.debug(f"{asset}: Only {days_available} days available (need at least {min_required_days}), removing from screening")
+                        logger.debug(f"{asset}: Only {bars_available} bars available (need at least {min_required_bars}), removing from screening")
                 except Exception as e:
                     logger.warning(f"{asset}: Failed to load data - {e}, removing from screening")
                     continue
@@ -163,6 +164,7 @@ class PairsScreener:
             result['id'] = result.get('id', idx + 1)  # Add ID if not present
             result['screening_date'] = datetime.utcnow()
             result['lookback_days'] = config.lookback_days
+            result['timeframe'] = config.timeframe
             result['status'] = 'active'
             if session_id:
                 result['session_id'] = session_id
@@ -210,6 +212,7 @@ class PairsScreener:
             "started_at": datetime.utcnow().isoformat(),
             "config": {
                 "lookback_days": config.lookback_days,
+                "timeframe": config.timeframe,
                 "min_correlation": config.min_correlation,
                 "max_adf_pvalue": config.max_adf_pvalue,
                 "include_hurst": config.include_hurst,
@@ -242,19 +245,21 @@ class PairsScreener:
             price_a = self.data_loader.get_price_series(
                 asset_a,
                 days=config.lookback_days,
-                db=self.db
+                db=self.db,
+                timeframe=config.timeframe
             )
             price_b = self.data_loader.get_price_series(
                 asset_b,
                 days=config.lookback_days,
-                db=self.db
+                db=self.db,
+                timeframe=config.timeframe
             )
-            
+
             # Check data availability (should already be validated, but double-check)
-            min_required_days = int(config.lookback_days * 0.8)
-            if len(price_a) < min_required_days or len(price_b) < min_required_days:
+            min_required_bars = int(bars_for_lookback(config.lookback_days, config.timeframe) * 0.8)
+            if len(price_a) < min_required_bars or len(price_b) < min_required_bars:
                 # This shouldn't happen if filtering worked correctly, but log it
-                logger.warning(f"Pair {asset_a}-{asset_b} has insufficient data: {len(price_a)} and {len(price_b)} days (need {min_required_days})")
+                logger.warning(f"Pair {asset_a}-{asset_b} has insufficient data: {len(price_a)} and {len(price_b)} bars (need {min_required_bars})")
                 return None
             
             # OPTIMIZATION: Fast correlation check FIRST (before slow cointegration test)

@@ -5,17 +5,41 @@ interface ScreenerSettingsProps {
   onSettingsApplied?: () => void;
 }
 
+// For each candle timeframe, the lookback window (in days) needs to be long enough
+// to cover many independent cycles - otherwise cointegration/ADF results are just
+// overfitting to a single short-term move (e.g. "today's data").
+const TIMEFRAMES: { value: string; label: string; min: number; max: number; default: number }[] = [
+  { value: '1m', label: '1 minute', min: 2, max: 7, default: 3 },
+  { value: '5m', label: '5 minutes', min: 5, max: 21, default: 10 },
+  { value: '15m', label: '15 minutes', min: 10, max: 45, default: 21 },
+  { value: '1h', label: '1 hour', min: 14, max: 180, default: 30 },
+  { value: '4h', label: '4 hours', min: 30, max: 365, default: 90 },
+  { value: '1d', label: '1 day', min: 50, max: 1000, default: 365 },
+];
+
 const ScreenerSettings: React.FC<ScreenerSettingsProps> = ({ onSettingsApplied }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [isRunning, setIsRunning] = useState(false);
-  
+
   const [settings, setSettings] = useState<ScreeningConfig>({
     lookback_days: 365,
+    timeframe: '1d',
     min_correlation: 0.80,
     max_adf_pvalue: 0.10,
     include_hurst: true,
     min_volume_usd: 1_000_000,
   });
+
+  const currentTimeframe = TIMEFRAMES.find((t) => t.value === settings.timeframe) || TIMEFRAMES[5];
+
+  const handleTimeframeChange = (value: string) => {
+    const tf = TIMEFRAMES.find((t) => t.value === value) || TIMEFRAMES[5];
+    setSettings((prev) => {
+      const lookback = prev.lookback_days ?? tf.default;
+      const inRange = lookback >= tf.min && lookback <= tf.max;
+      return { ...prev, timeframe: tf.value, lookback_days: inRange ? lookback : tf.default };
+    });
+  };
 
   const handleRunScreening = async () => {
     setIsRunning(true);
@@ -82,20 +106,47 @@ const ScreenerSettings: React.FC<ScreenerSettingsProps> = ({ onSettingsApplied }
               )}
               <div>
                 <label className="block text-sm font-medium text-gray-300 mb-2">
-                  Lookback Days: {settings.lookback_days}
+                  Timeframe
+                </label>
+                <div className="grid grid-cols-3 gap-2 sm:grid-cols-6">
+                  {TIMEFRAMES.map((tf) => (
+                    <button
+                      key={tf.value}
+                      type="button"
+                      onClick={() => handleTimeframeChange(tf.value)}
+                      className={`rounded-lg border px-2 py-2 text-xs font-medium transition-colors ${
+                        settings.timeframe === tf.value
+                          ? 'border-emerald-500 bg-emerald-500/20 text-emerald-300'
+                          : 'border-[#1a1a24] bg-[#1a1a24] text-gray-400 hover:border-emerald-500/40 hover:text-gray-200'
+                      }`}
+                    >
+                      {tf.value}
+                    </button>
+                  ))}
+                </div>
+                <p className="mt-2 text-2xs text-gray-500">
+                  Intraday timeframes (1m–4h) re-run cointegration on shorter candles. The lookback range below
+                  is constrained per timeframe so results still span enough independent cycles to be statistically
+                  meaningful — a 1m screen over a single day, for example, would just overfit to today's move.
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-2">
+                  Lookback Days: {settings.lookback_days} <span className="text-gray-500">({currentTimeframe.label} candles)</span>
                 </label>
                 <input
                   type="range"
-                  min="50"
-                  max="1000"
+                  min={currentTimeframe.min}
+                  max={currentTimeframe.max}
                   step="1"
                   value={settings.lookback_days}
                   onChange={(e) => setSettings({ ...settings, lookback_days: parseInt(e.target.value) })}
                   className="w-full h-2 bg-[#1a1a24] rounded-lg appearance-none cursor-pointer accent-emerald-500"
                 />
                 <div className="flex justify-between text-xs text-gray-500 mt-1">
-                  <span>50</span>
-                  <span>1000</span>
+                  <span>{currentTimeframe.min}</span>
+                  <span>{currentTimeframe.max}</span>
                 </div>
               </div>
 

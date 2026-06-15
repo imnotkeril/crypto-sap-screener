@@ -9,6 +9,22 @@ from sqlalchemy.orm import Session
 from app.database import PriceDataCache
 from app.config import settings
 import time
+
+# Candle timeframes supported for screening, mapped to their duration in milliseconds
+TIMEFRAME_MS: Dict[str, int] = {
+    '1m': 60 * 1000,
+    '5m': 5 * 60 * 1000,
+    '15m': 15 * 60 * 1000,
+    '1h': 60 * 60 * 1000,
+    '4h': 4 * 60 * 60 * 1000,
+    '1d': 24 * 60 * 60 * 1000,
+}
+
+
+def bars_for_lookback(days: int, timeframe: str) -> int:
+    """Number of candles of `timeframe` that cover `days` of history."""
+    candle_ms = TIMEFRAME_MS.get(timeframe, TIMEFRAME_MS['1d'])
+    return max(1, int(days * TIMEFRAME_MS['1d'] // candle_ms))
 import threading
 import pickle
 from pathlib import Path
@@ -182,78 +198,82 @@ class DataLoader:
         return top_assets
     
     def fetch_ohlcv(
-        self, 
-        symbol: str, 
+        self,
+        symbol: str,
         days: int = 365,
-        db: Optional[Session] = None
+        db: Optional[Session] = None,
+        timeframe: str = '1d'
     ) -> pd.DataFrame:
         """
         Fetch OHLCV data for a symbol (NO CACHE CHECKING - just fetch from API)
-        
+
         Args:
             symbol: Asset symbol (e.g., 'BTC')
             days: Number of days of historical data
             db: Database session for caching (optional)
-            
+            timeframe: Candle timeframe (e.g. '1d', '4h', '1h', '15m', '5m', '1m')
+
         Returns:
             DataFrame with columns: date, open, high, low, close, volume
         """
         # Fetch from exchange with retry logic
         max_retries = 3
         retry_delay = 2  # seconds
-        
+
+        candle_ms = TIMEFRAME_MS.get(timeframe, TIMEFRAME_MS['1d'])
+        # Number of candles needed to cover `days` of history at this timeframe
+        num_candles = max(1, int(days * 24 * 60 * 60 * 1000 // candle_ms))
+
         for attempt in range(max_retries):
             try:
                 symbol_pair = f"{symbol}/USDT"
-                timeframe = '1d'
                 max_candles_per_request = 1000
-                
-                if days <= max_candles_per_request:
+
+                if num_candles <= max_candles_per_request:
                     # Single request
-                    since = self.exchange.milliseconds() - (days * 24 * 60 * 60 * 1000)
+                    since = self.exchange.milliseconds() - (num_candles * candle_ms)
                     # Log request details for debugging
                     if symbol in ['1000SHIB', 'SHIB', 'GALA'] or days > 200:
-                        print(f"  DEBUG {symbol}: Requesting {days} days, since={since} ({(self.exchange.milliseconds() - since) / (24*60*60*1000):.1f} days ago)")
+                        print(f"  DEBUG {symbol}: Requesting {num_candles} {timeframe} candles, since={since} ({(self.exchange.milliseconds() - since) / (24*60*60*1000):.1f} days ago)")
                     ohlcv = self.exchange.fetch_ohlcv(symbol_pair, timeframe, since=since)
                     if symbol in ['1000SHIB', 'SHIB', 'GALA'] or days > 200:
                         print(f"  DEBUG {symbol}: Received {len(ohlcv) if ohlcv else 0} candles from API")
                 else:
-                    # Multiple requests needed for > 1000 days
+                    # Multiple requests needed for > 1000 candles
                     # Binance returns data from 'since' to now, max 1000 candles
                     # Strategy: fetch batches going backwards in time
                     all_ohlcv = []
                     now_ms = self.exchange.milliseconds()
-                    batches_needed = (days + 999) // 1000  # Round up
-                    
+                    batches_needed = (num_candles + 999) // 1000  # Round up
+
                     for batch_num in range(batches_needed):
-                        # Calculate how many days back we need to go
-                        # Batch 0: most recent 1000 days (or less if days < 1000)
-                        # Batch 1: days 1000-1999 back
-                        # Batch 2: days 2000-2999 back, etc.
-                        batch_start_days_back = batch_num * 1000
-                        batch_end_days_back = min((batch_num + 1) * 1000, days)
-                        
+                        # Calculate how many candles back we need to go
+                        # Batch 0: most recent 1000 candles (or less if num_candles < 1000)
+                        # Batch 1: candles 1000-1999 back
+                        # Batch 2: candles 2000-2999 back, etc.
+                        batch_end_candles_back = min((batch_num + 1) * 1000, num_candles)
+
                         # Calculate since timestamp (how far back from now)
-                        since = now_ms - (batch_end_days_back * 24 * 60 * 60 * 1000)
-                        
+                        since = now_ms - (batch_end_candles_back * candle_ms)
+
                         try:
                             batch_ohlcv = self.exchange.fetch_ohlcv(
-                                symbol_pair, timeframe, 
-                                since=since, 
+                                symbol_pair, timeframe,
+                                since=since,
                                 limit=max_candles_per_request
                             )
                         except Exception as e:
                             print(f"Error fetching batch {batch_num + 1}/{batches_needed} for {symbol}: {e}")
                             break
-                        
+
                         if not batch_ohlcv:
                             break
-                        
+
                         if batch_num == 0:
-                            # First batch: take the most recent candles (up to batch_end_days_back)
-                            # Binance returns from 'since' to now, so take the last batch_end_days_back candles
-                            if len(batch_ohlcv) > batch_end_days_back:
-                                batch_ohlcv = batch_ohlcv[-batch_end_days_back:]
+                            # First batch: take the most recent candles (up to batch_end_candles_back)
+                            # Binance returns from 'since' to now, so take the last batch_end_candles_back candles
+                            if len(batch_ohlcv) > batch_end_candles_back:
+                                batch_ohlcv = batch_ohlcv[-batch_end_candles_back:]
                         else:
                             # Subsequent batches: filter out candles we already have
                             if all_ohlcv:
@@ -263,14 +283,14 @@ class DataLoader:
                                 # Take the most recent ones from this batch (up to 1000)
                                 if len(batch_ohlcv) > 1000:
                                     batch_ohlcv = batch_ohlcv[-1000:]
-                        
+
                         if batch_ohlcv:
                             all_ohlcv.extend(batch_ohlcv)
-                        
+
                         # Rate limiting between batches
                         if batch_num < batches_needed - 1:
                             time.sleep(0.5)
-                    
+
                     # Sort by timestamp (oldest first) and remove duplicates
                     all_ohlcv.sort(key=lambda x: x[0])
                     seen = set()
@@ -280,32 +300,32 @@ class DataLoader:
                             seen.add(candle[0])
                             unique_ohlcv.append(candle)
                     ohlcv = unique_ohlcv
-                    
-                    # Take only the most recent 'days' candles
-                    if len(ohlcv) > days:
-                        ohlcv = ohlcv[-days:]
-                
+
+                    # Take only the most recent 'num_candles' candles
+                    if len(ohlcv) > num_candles:
+                        ohlcv = ohlcv[-num_candles:]
+
                 if not ohlcv:
                     return pd.DataFrame()
-                
+
                 df = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
                 df['date'] = pd.to_datetime(df['timestamp'], unit='ms')
                 df.set_index('date', inplace=True)
                 df = df[['open', 'high', 'low', 'close', 'volume']]
-                
+
                 # Log date range for debugging
                 if symbol in ['1000SHIB', 'SHIB', 'GALA'] or days > 200:
                     if len(df) > 0:
-                        print(f"  DEBUG {symbol}: Data range: {df.index[0].date()} to {df.index[-1].date()} ({len(df)} candles)")
-                
-                # Ensure we have exactly 'days' candles (most recent)
-                if len(df) > days:
-                    df = df.tail(days)
+                        print(f"  DEBUG {symbol}: Data range: {df.index[0]} to {df.index[-1]} ({len(df)} candles)")
+
+                # Ensure we have exactly 'num_candles' candles (most recent)
+                if len(df) > num_candles:
+                    df = df.tail(num_candles)
                     if symbol in ['1000SHIB', 'SHIB', 'GALA'] or days > 200:
-                        print(f"  DEBUG {symbol}: Trimmed to {len(df)} candles (most recent {days} days)")
-                
-                # Cache in database (optional)
-                if db:
+                        print(f"  DEBUG {symbol}: Trimmed to {len(df)} candles (most recent {num_candles})")
+
+                # Cache in database (daily candles only - PriceDataCache is keyed by date)
+                if db and timeframe == '1d':
                     try:
                         for date, row in df.iterrows():
                             price_data = PriceDataCache(
@@ -358,34 +378,37 @@ class DataLoader:
         
         return pd.DataFrame()
     
-    def get_price_series(self, symbol: str, days: int = 365, db: Optional[Session] = None) -> pd.Series:
+    def get_price_series(self, symbol: str, days: int = 365, db: Optional[Session] = None, timeframe: str = '1d') -> pd.Series:
         """
         Get closing price series for a symbol with caching and rate limiting
-        
+
         Args:
             symbol: Asset symbol
-            days: Number of days
+            days: Number of days of lookback
             db: Database session
-            
+            timeframe: Candle timeframe (e.g. '1d', '4h', '1h', '15m', '5m', '1m')
+
         Returns:
             Series with dates as index and prices as values
         """
-        cache_key = f"{symbol}_{days}"
+        expected_bars = bars_for_lookback(days, timeframe)
+        cache_key = f"{symbol}_{days}" if timeframe == '1d' else f"{symbol}_{timeframe}_{days}"
         cache_file = self._cache_dir / f"{cache_key.replace('/', '_')}.pkl"
-        
+        insufficient_key = symbol if timeframe == '1d' else f"{symbol}_{timeframe}"
+
         # 0. Quick check: if we know this symbol has insufficient data, return early
-        if symbol in self._insufficient_data_symbols:
-            available_days = self._insufficient_data_symbols[symbol]
-            if available_days < days * 0.8:
+        if insufficient_key in self._insufficient_data_symbols:
+            available_bars = self._insufficient_data_symbols[insufficient_key]
+            if available_bars < expected_bars * 0.8:
                 # Return empty series to indicate insufficient data
                 # This prevents repeated API calls for symbols we know don't have enough data
                 return pd.Series(dtype=float)
-        
+
         # 1. Check in-memory cache first (fastest)
         with self._cache_lock:
             if cache_key in self._price_cache:
                 cached_series = self._price_cache[cache_key]
-                if len(cached_series) >= days * 0.8:  # At least 80% of requested days
+                if len(cached_series) >= expected_bars * 0.8:  # At least 80% of requested bars
                     return cached_series.copy()
                 # Remove from cache if insufficient data
                 del self._price_cache[cache_key]
@@ -402,22 +425,22 @@ class DataLoader:
             with self._cache_lock:
                 if cache_key in self._price_cache:
                     cached_series = self._price_cache[cache_key]
-                    if len(cached_series) >= days * 0.8:  # At least 80% of requested days
+                    if len(cached_series) >= expected_bars * 0.8:  # At least 80% of requested bars
                         return cached_series.copy()
             # Double-check cache after acquiring lock (another thread might have loaded it)
             with self._cache_lock:
                 if cache_key in self._price_cache:
                     cached_series = self._price_cache[cache_key]
-                    if len(cached_series) >= days * 0.8:
+                    if len(cached_series) >= expected_bars * 0.8:
                         return cached_series.copy()
-            
+
             # 4. Check file cache (persistent across restarts)
             if cache_file.exists():
                 try:
                     with open(cache_file, 'rb') as f:
                         price_series = pickle.load(f)
-                    
-                    if len(price_series) >= days * 0.8:
+
+                    if len(price_series) >= expected_bars * 0.8:
                         # Load into memory cache for faster access
                         with self._cache_lock:
                             self._price_cache[cache_key] = price_series.copy()
@@ -448,8 +471,8 @@ class DataLoader:
                 
                 try:
                     # Log the request
-                    print(f"Fetching {days} days of data for {symbol}...")
-                    df = self.fetch_ohlcv(symbol, days, db)
+                    print(f"Fetching {bars_for_lookback(days, timeframe)} {timeframe} candles ({days} days) for {symbol}...")
+                    df = self.fetch_ohlcv(symbol, days, db, timeframe=timeframe)
                     self._last_request_time = time.time()
                     
                     if df.empty:
@@ -464,23 +487,23 @@ class DataLoader:
                             except Exception:
                                 pass
                         # Mark as failed
-                        self._insufficient_data_symbols[symbol] = 0
+                        self._insufficient_data_symbols[insufficient_key] = 0
                         return pd.Series(dtype=float)
-                    
+
                     price_series = df['close']
-                    days_received = len(price_series)
-                    
+                    bars_received = len(price_series)
+
                     # Verify we got enough data
-                    if days_received < days * 0.8:
-                        print(f"⚠️  Warning: Only got {days_received} days of data for {symbol}, requested {days} days")
+                    if bars_received < expected_bars * 0.8:
+                        print(f"⚠️  Warning: Only got {bars_received} {timeframe} candles for {symbol}, requested {expected_bars}")
                         print(f"  → Possible reasons: asset recently listed, API error, or insufficient historical data")
                         # Cache this to avoid repeated requests
-                        self._insufficient_data_symbols[symbol] = days_received
+                        self._insufficient_data_symbols[insufficient_key] = bars_received
                         # Still return the data we have (might be useful for some pairs)
-                    elif days_received < days:
-                        print(f"  ✓ Got {days_received} days for {symbol} (requested {days}, missing {days - days_received} days)")
+                    elif bars_received < expected_bars:
+                        print(f"  ✓ Got {bars_received} {timeframe} candles for {symbol} (requested {expected_bars}, missing {expected_bars - bars_received})")
                     else:
-                        print(f"  ✓ Successfully fetched {days_received} days of data for {symbol}")
+                        print(f"  ✓ Successfully fetched {bars_received} {timeframe} candles for {symbol}")
                     
                     # 6. Save to file cache (persistent)
                     try:

@@ -28,6 +28,7 @@ apiClient.interceptors.response.use(
 export interface ScreeningConfig {
   assets?: string[];
   lookback_days?: number;
+  timeframe?: string;
   min_correlation?: number;
   max_adf_pvalue?: number;
   include_hurst?: boolean;
@@ -46,6 +47,7 @@ export interface PairResult {
   hurst_exponent?: number;
   screening_date: string;
   lookback_days: number;
+  timeframe?: string;
   mean_spread?: number;
   min_correlation_window?: number;
   max_correlation_window?: number;

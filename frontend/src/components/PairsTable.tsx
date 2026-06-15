@@ -475,6 +475,9 @@ const PairsTable: React.FC<PairsTableProps> = ({ pairs }) => {
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">
                 Z-Score
               </th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">
+                TF
+              </th>
             </tr>
           </thead>
           <tbody className="divide-y divide-[#1a1a24]">
@@ -551,6 +554,9 @@ const PairsTable: React.FC<PairsTableProps> = ({ pairs }) => {
                   ) : (
                     <span className="text-gray-600">—</span>
                   )}
+                </td>
+                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-400">
+                  {pair.timeframe || '1d'}
                 </td>
               </tr>
               );
