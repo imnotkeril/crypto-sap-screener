@@ -65,6 +65,7 @@ class ScreeningStatusResponse(BaseModel):
     is_running: bool
     last_session: Optional[ScreeningSessionResponse] = None
     total_pairs_in_db: int
+    last_error: Optional[str] = None
 
 
 class ScreeningResultsResponse(BaseModel):

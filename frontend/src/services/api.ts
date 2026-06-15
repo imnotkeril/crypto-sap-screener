@@ -27,6 +27,7 @@ apiClient.interceptors.response.use(
 
 export interface ScreeningConfig {
   assets?: string[];
+  max_assets?: number;
   lookback_days?: number;
   timeframe?: string;
   min_correlation?: number;
@@ -68,6 +69,7 @@ export interface ScreeningStatus {
   is_running: boolean;
   last_session?: ScreeningSession;
   total_pairs_in_db: number;
+  last_error?: string | null;
 }
 
 export interface ScreeningResults {

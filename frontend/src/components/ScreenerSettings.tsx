@@ -8,13 +8,25 @@ interface ScreenerSettingsProps {
 // For each candle timeframe, the lookback window (in days) needs to be long enough
 // to cover many independent cycles - otherwise cointegration/ADF results are just
 // overfitting to a single short-term move (e.g. "today's data").
-const TIMEFRAMES: { value: string; label: string; min: number; max: number; default: number }[] = [
-  { value: '1m', label: '1 minute', min: 2, max: 7, default: 3 },
-  { value: '5m', label: '5 minutes', min: 5, max: 21, default: 10 },
-  { value: '15m', label: '15 minutes', min: 10, max: 45, default: 21 },
-  { value: '1h', label: '1 hour', min: 14, max: 180, default: 30 },
-  { value: '4h', label: '4 hours', min: 30, max: 365, default: 90 },
-  { value: '1d', label: '1 day', min: 50, max: 1000, default: 365 },
+// Fine candle timeframes require many paginated requests per asset (Binance
+// caps OHLCV responses at 1000 candles/request), so the asset universe is
+// capped lower to keep a screening run from taking too long / hitting rate
+// limits. maxAssetsDefault/maxAssetsLimit scale up as candles get coarser.
+const TIMEFRAMES: {
+  value: string;
+  label: string;
+  min: number;
+  max: number;
+  default: number;
+  maxAssetsDefault: number;
+  maxAssetsLimit: number;
+}[] = [
+  { value: '1m', label: '1 minute', min: 2, max: 7, default: 3, maxAssetsDefault: 15, maxAssetsLimit: 30 },
+  { value: '5m', label: '5 minutes', min: 5, max: 21, default: 10, maxAssetsDefault: 30, maxAssetsLimit: 50 },
+  { value: '15m', label: '15 minutes', min: 10, max: 45, default: 21, maxAssetsDefault: 50, maxAssetsLimit: 100 },
+  { value: '1h', label: '1 hour', min: 14, max: 180, default: 30, maxAssetsDefault: 100, maxAssetsLimit: 200 },
+  { value: '4h', label: '4 hours', min: 30, max: 365, default: 90, maxAssetsDefault: 100, maxAssetsLimit: 200 },
+  { value: '1d', label: '1 day', min: 50, max: 1000, default: 365, maxAssetsDefault: 100, maxAssetsLimit: 200 },
 ];
 
 const ScreenerSettings: React.FC<ScreenerSettingsProps> = ({ onSettingsApplied }) => {
@@ -24,6 +36,7 @@ const ScreenerSettings: React.FC<ScreenerSettingsProps> = ({ onSettingsApplied }
   const [settings, setSettings] = useState<ScreeningConfig>({
     lookback_days: 365,
     timeframe: '1d',
+    max_assets: 100,
     min_correlation: 0.80,
     max_adf_pvalue: 0.10,
     include_hurst: true,
@@ -37,7 +50,14 @@ const ScreenerSettings: React.FC<ScreenerSettingsProps> = ({ onSettingsApplied }
     setSettings((prev) => {
       const lookback = prev.lookback_days ?? tf.default;
       const inRange = lookback >= tf.min && lookback <= tf.max;
-      return { ...prev, timeframe: tf.value, lookback_days: inRange ? lookback : tf.default };
+      const maxAssets = prev.max_assets ?? tf.maxAssetsDefault;
+      const maxAssetsInRange = maxAssets <= tf.maxAssetsLimit;
+      return {
+        ...prev,
+        timeframe: tf.value,
+        lookback_days: inRange ? lookback : tf.default,
+        max_assets: maxAssetsInRange ? maxAssets : tf.maxAssetsDefault,
+      };
     });
   };
 
@@ -49,8 +69,31 @@ const ScreenerSettings: React.FC<ScreenerSettingsProps> = ({ onSettingsApplied }
       if (onSettingsApplied) {
         onSettingsApplied();
       }
-      // Show success message
-      setTimeout(() => setIsRunning(false), 2000);
+
+      // The run executes as a background task, so poll status until it
+      // finishes (or a 5 minute cap, for slow intraday scans) so we can
+      // surface failures and refresh results once new data is in.
+      const start = Date.now();
+      const poll = async () => {
+        try {
+          const status = await api.getStatus();
+          if (status.is_running && Date.now() - start < 5 * 60 * 1000) {
+            setTimeout(poll, 3000);
+            return;
+          }
+          if (status.last_error) {
+            alert(`Screening failed: ${status.last_error}`);
+          }
+        } catch (e) {
+          // ignore polling errors
+        } finally {
+          setIsRunning(false);
+          if (onSettingsApplied) {
+            onSettingsApplied();
+          }
+        }
+      };
+      setTimeout(poll, 3000);
     } catch (error) {
       console.error('Error running screening:', error);
       setIsRunning(false);
@@ -148,6 +191,29 @@ const ScreenerSettings: React.FC<ScreenerSettingsProps> = ({ onSettingsApplied }
                   <span>{currentTimeframe.min}</span>
                   <span>{currentTimeframe.max}</span>
                 </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-2">
+                  Max Assets: {settings.max_assets ?? currentTimeframe.maxAssetsDefault}
+                </label>
+                <input
+                  type="range"
+                  min="10"
+                  max={currentTimeframe.maxAssetsLimit}
+                  step="5"
+                  value={settings.max_assets ?? currentTimeframe.maxAssetsDefault}
+                  onChange={(e) => setSettings({ ...settings, max_assets: parseInt(e.target.value) })}
+                  className="w-full h-2 bg-[#1a1a24] rounded-lg appearance-none cursor-pointer accent-emerald-500"
+                />
+                <div className="flex justify-between text-xs text-gray-500 mt-1">
+                  <span>10</span>
+                  <span>{currentTimeframe.maxAssetsLimit}</span>
+                </div>
+                <p className="mt-2 text-2xs text-gray-500">
+                  Number of top-volume assets to scan (pairs tested ≈ N²/2). Fine timeframes are capped lower
+                  since each asset needs many paginated requests to fetch enough candles.
+                </p>
               </div>
 
               <div>

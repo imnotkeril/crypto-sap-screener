@@ -33,6 +33,7 @@ logger = logging.getLogger(__name__)
 
 # Global variable to track running screening
 _screening_in_progress = False
+_last_run_error: Optional[str] = None
 
 
 @router.get("/debug/db")
@@ -170,9 +171,10 @@ async def get_screening_status(background_tasks: BackgroundTasks, db: Session = 
             )
         
         return ScreeningStatusResponse(
-            is_running=status['is_running'],
+            is_running=status['is_running'] or _screening_in_progress,
             last_session=last_session_response,
-            total_pairs_in_db=status['total_pairs_found']
+            total_pairs_in_db=status['total_pairs_found'],
+            last_error=_last_run_error
         )
     except Exception as e:
         logger.error(f"Error getting status: {e}")
@@ -274,10 +276,11 @@ async def run_screening(
 
 def _run_screening_background(session_id: int, config: ScreeningConfig):
     """Background task for running screening"""
-    global _screening_in_progress
-    
+    global _screening_in_progress, _last_run_error
+
     _screening_in_progress = True
-    
+    _last_run_error = None
+
     try:
         logger.info(f"Starting background screening with lookback_days={config.lookback_days}")
         # Run screener WITHOUT database - use memory only
@@ -314,6 +317,7 @@ def _run_screening_background(session_id: int, config: ScreeningConfig):
         logger.error(f"Error in background screening: {e}")
         import traceback
         traceback.print_exc()
+        _last_run_error = f"Screening failed: {e}"
     finally:
         _screening_in_progress = False
 
