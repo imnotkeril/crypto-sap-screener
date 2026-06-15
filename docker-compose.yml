@@ -1,0 +1,89 @@
+# Full local development stack: data layer + backend + frontend.
+#
+# Usage:
+#   docker compose up -d --build
+#
+# Then open:
+#   - Frontend:    http://localhost:3000
+#   - Backend API: http://localhost:8000
+#   - Data layer:  http://localhost:8001/health
+#
+# Data is persisted in Docker volumes across restarts.
+
+services:
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - app-redis:/data
+
+  postgres:
+    image: postgres:15-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: datalayer
+      POSTGRES_PASSWORD: datalayer
+      POSTGRES_DB: datalayer
+    ports:
+      - "5432:5432"
+    volumes:
+      - app-postgres:/var/lib/postgresql/data
+
+  datalayer:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    command: ["python", "-m", "app.data_layer.main"]
+    working_dir: /app/backend
+    environment:
+      PORT: "8001"
+      REDIS_URL: redis://redis:6379
+      DATABASE_URL: postgresql://datalayer:datalayer@postgres:5432/datalayer
+    ports:
+      - "8001:8001"
+    depends_on:
+      - redis
+      - postgres
+
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    command: ["sh", "-c", "python -m uvicorn app.main:app --host 0.0.0.0 --port 8000"]
+    working_dir: /app/backend
+    environment:
+      PORT: "8000"
+      REDIS_URL: redis://redis:6379
+      DATA_LAYER_URL: http://datalayer:8001
+      DATABASE_URL: sqlite:///./data/stat_arb.db
+    ports:
+      - "8000:8000"
+    volumes:
+      - app-backend-data:/app/backend/data
+    depends_on:
+      - redis
+      - datalayer
+
+  frontend:
+    image: node:18-alpine
+    working_dir: /app
+    command: sh -c "npm ci && npm run dev -- --host 0.0.0.0"
+    environment:
+      VITE_BACKEND_URL: http://backend:8000
+    volumes:
+      - ./frontend:/app
+      - frontend-node-modules:/app/node_modules
+    ports:
+      - "3000:5173"
+    depends_on:
+      - backend
+
+volumes:
+  app-redis:
+  app-postgres:
+  app-backend-data:
+  frontend-node-modules:
