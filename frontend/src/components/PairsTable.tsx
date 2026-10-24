@@ -473,6 +473,12 @@ const PairsTable: React.FC<PairsTableProps> = ({ pairs }) => {
                 </div>
               </th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">
+                HL
+              </th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">
+                Net%
+              </th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">
                 Z-Score
               </th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">
@@ -537,6 +543,22 @@ const PairsTable: React.FC<PairsTableProps> = ({ pairs }) => {
                   {pair.hurst_exponent !== null && pair.hurst_exponent !== undefined ? (
                     <span className={pair.hurst_exponent < 0.5 ? 'text-emerald-400' : 'text-gray-400'}>
                       {formatNumber(pair.hurst_exponent)}
+                    </span>
+                  ) : (
+                    <span className="text-gray-600">—</span>
+                  )}
+                </td>
+                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300" title="Mean-reversion half-life (bars)">
+                  {pair.half_life !== null && pair.half_life !== undefined ? (
+                    <span className="text-gray-300">{formatNumber(pair.half_life, 1)}</span>
+                  ) : (
+                    <span className="text-gray-600">—</span>
+                  )}
+                </td>
+                <td className="px-6 py-4 whitespace-nowrap text-sm" title="Expected net edge per round-trip after fees + funding (% of price)">
+                  {pair.expected_net_edge_pct !== null && pair.expected_net_edge_pct !== undefined ? (
+                    <span className={pair.expected_net_edge_pct > 0 ? 'text-emerald-400' : 'text-red-400'}>
+                      {formatNumber(pair.expected_net_edge_pct, 2)}
                     </span>
                   ) : (
                     <span className="text-gray-600">—</span>

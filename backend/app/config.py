@@ -46,6 +46,13 @@ class Settings(BaseSettings):
     INTRADAY_TOP_PAIRS: int = 20  # number of top daily pairs to track live
     INTRADAY_ZSCORE_ALERT_THRESHOLD: float = 2.5  # |z| considered an unusual intraday deviation
 
+    # Intraday Kalman dynamic hedge ratio. The live monitor re-fits beta/alpha
+    # online on intraday candles instead of reusing the stale daily fit.
+    INTRADAY_KALMAN_TIMEFRAME: str = '5m'  # candle timeframe for the live re-fit
+    INTRADAY_KALMAN_LOOKBACK_DAYS: int = 3  # history fed to the filter
+    INTRADAY_KALMAN_DELTA: float = 1e-4  # state transition cov (beta agility)
+    INTRADAY_KALMAN_R: float = 1e-3  # observation noise variance
+
     # API
     API_V1_PREFIX: str = "/api/v1"
     

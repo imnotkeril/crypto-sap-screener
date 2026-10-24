@@ -406,6 +406,8 @@ async def get_screening_results(
                 beta=result['beta'],
                 spread_std=result['spread_std'],
                 hurst_exponent=result.get('hurst_exponent'),
+                half_life=result.get('half_life'),
+                expected_net_edge_pct=result.get('expected_net_edge_pct'),
                 screening_date=screening_date,
                 lookback_days=result.get('lookback_days', 365),
                 timeframe=result.get('timeframe'),
@@ -456,6 +458,8 @@ async def get_pair_details(pair_id: int, db: Session = Depends(get_db)):
                     beta=row.beta,
                     spread_std=row.spread_std,
                     hurst_exponent=row.hurst_exponent,
+                    half_life=row.half_life,
+                    expected_net_edge_pct=row.expected_net_edge_pct,
                     screening_date=row.screening_date,
                     lookback_days=row.lookback_days,
                     mean_spread=row.mean_spread,
@@ -486,6 +490,8 @@ async def get_pair_details(pair_id: int, db: Session = Depends(get_db)):
             beta=pair['beta'],
             spread_std=pair['spread_std'],
             hurst_exponent=pair.get('hurst_exponent'),
+            half_life=pair.get('half_life'),
+            expected_net_edge_pct=pair.get('expected_net_edge_pct'),
             screening_date=screening_date,
             lookback_days=pair.get('lookback_days', 365),
             mean_spread=pair.get('mean_spread'),
@@ -1259,8 +1265,8 @@ async def export_results_csv(
         # Select relevant columns
         columns = [
             'asset_a', 'asset_b', 'correlation', 'beta', 'adf_pvalue',
-            'spread_std', 'hurst_exponent', 'mean_spread', 'current_zscore',
-            'composite_score'
+            'spread_std', 'hurst_exponent', 'half_life', 'expected_net_edge_pct',
+            'mean_spread', 'current_zscore', 'composite_score'
         ]
         available_columns = [col for col in columns if col in df.columns]
         df = df[available_columns]
@@ -1303,8 +1309,8 @@ async def export_results_excel(
         # Select relevant columns
         columns = [
             'asset_a', 'asset_b', 'correlation', 'beta', 'adf_pvalue',
-            'spread_std', 'hurst_exponent', 'mean_spread', 'current_zscore',
-            'composite_score'
+            'spread_std', 'hurst_exponent', 'half_life', 'expected_net_edge_pct',
+            'mean_spread', 'current_zscore', 'composite_score'
         ]
         available_columns = [col for col in columns if col in df.columns]
         df = df[available_columns]

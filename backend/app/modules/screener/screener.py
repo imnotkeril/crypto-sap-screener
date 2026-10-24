@@ -9,7 +9,7 @@ from datetime import datetime
 import pandas as pd
 import logging
 
-from app.modules.screener.data_loader import DataLoader, bars_for_lookback
+from app.modules.screener.data_loader import DataLoader, bars_for_lookback, TIMEFRAME_MS
 from app.modules.screener.cointegration import CointegrationTester
 from app.modules.screener.correlation import CorrelationAnalyzer
 from app.modules.screener.hurst import HurstCalculator
@@ -101,12 +101,19 @@ class PairsScreener:
             logger.error("Need at least 2 assets with sufficient data to form pairs")
             return []
         
-        # Step 4: Generate pairs only from valid assets
-        pairs = []
-        for i, asset_a in enumerate(valid_assets):
-            for asset_b in valid_assets[i+1:]:
-                pairs.append((asset_a, asset_b))
-        
+        # Step 4: Generate pairs from valid assets. Optionally pre-cluster the
+        # universe by return correlation and only form within-cluster pairs, so
+        # we test far fewer combinations (fewer false discoveries, focus on
+        # economically related assets).
+        if config.use_clustering and len(valid_assets) > 2:
+            pairs = self._clustered_pairs(valid_assets, config)
+        else:
+            pairs = [
+                (asset_a, asset_b)
+                for i, asset_a in enumerate(valid_assets)
+                for asset_b in valid_assets[i + 1:]
+            ]
+
         logger.info(f"Step 4: Generated {len(pairs)} pairs from {len(valid_assets)} valid assets")
         
         # Test pairs (with optimized parallel processing)
@@ -147,12 +154,46 @@ class PairsScreener:
         logger.info(f"Completed testing {len(pairs)} pairs, found {len(results)} valid pairs")
         
         # Filter and rank results
+        def _half_life_ok(r) -> bool:
+            hl = r.get('half_life')
+            if config.min_half_life is not None and (hl is None or hl < config.min_half_life):
+                return False
+            if config.max_half_life is not None and (hl is None or hl > config.max_half_life):
+                return False
+            return True
+
         filtered_results = [
             r for r in results
             if r['correlation'] >= config.min_correlation
             and r['adf_pvalue'] <= config.max_adf_pvalue
+            and _half_life_ok(r)
         ]
-        
+
+        # Multiple-testing correction. We test ~N*(N-1)/2 pairs, so a raw
+        # p-value threshold yields many false discoveries (e.g. 4950 pairs at
+        # p<0.10 => ~495 spurious "cointegrated" pairs from noise alone).
+        # Benjamini-Hochberg FDR controls the expected fraction of false
+        # positives among the selected pairs.
+        if config.use_fdr and len(filtered_results) > 1:
+            try:
+                from statsmodels.stats.multitest import multipletests
+                pvals = [r['adf_pvalue'] for r in filtered_results]
+                reject, pvals_corrected, _, _ = multipletests(
+                    pvals, alpha=config.max_adf_pvalue, method='fdr_bh'
+                )
+                kept = []
+                for r, rej, pc in zip(filtered_results, reject, pvals_corrected):
+                    if rej:
+                        r['adf_pvalue_fdr'] = float(pc)
+                        kept.append(r)
+                logger.info(
+                    f"FDR (Benjamini-Hochberg @ alpha={config.max_adf_pvalue}): "
+                    f"kept {len(kept)}/{len(filtered_results)} pairs"
+                )
+                filtered_results = kept
+            except Exception as e:
+                logger.warning(f"FDR correction failed, using raw p-values: {e}")
+
         # Sort by combined score (correlation * (1 - adf_pvalue))
         filtered_results.sort(
             key=lambda x: x['correlation'] * (1 - x['adf_pvalue']),
@@ -185,6 +226,8 @@ class PairsScreener:
                         alpha=result.get('alpha'),
                         spread_std=result['spread_std'],
                         hurst_exponent=result.get('hurst_exponent'),
+                        half_life=result.get('half_life'),
+                        expected_net_edge_pct=result.get('expected_net_edge_pct'),
                         lookback_days=config.lookback_days,
                         mean_spread=result.get('mean_spread'),
                         min_correlation_window=result.get('min_correlation'),
@@ -218,11 +261,82 @@ class PairsScreener:
                 "include_hurst": config.include_hurst,
                 "min_volume_usd": config.min_volume_usd,
                 "max_assets": config.max_assets,
+                "min_half_life": config.min_half_life,
+                "max_half_life": config.max_half_life,
+                "use_fdr": config.use_fdr,
+                "use_clustering": config.use_clustering,
+                "cluster_distance": config.cluster_distance,
             },
         }
 
         return {"results": filtered_results, "stats": stats}
     
+    def _clustered_pairs(self, assets: List[str], config: ScreeningConfig):
+        """Group assets by return correlation and return only within-cluster pairs.
+
+        Uses average-linkage hierarchical clustering on a (1 - correlation)
+        distance, cut at ``config.cluster_distance``. Falls back to all pairs if
+        the return matrix can't be built. Series are read from cache (already
+        preloaded during the data-availability check).
+        """
+        import numpy as np
+        from scipy.cluster.hierarchy import linkage, fcluster
+        from scipy.spatial.distance import squareform
+
+        def _all_pairs(items):
+            return [
+                (items[i], items[j])
+                for i in range(len(items))
+                for j in range(i + 1, len(items))
+            ]
+
+        try:
+            series = {}
+            for a in assets:
+                s = self.data_loader.get_price_series(
+                    a, days=config.lookback_days, db=self.db, timeframe=config.timeframe
+                )
+                if len(s) > 0:
+                    series[a] = s
+
+            df = pd.DataFrame(series).dropna()
+            if df.shape[1] < 2 or df.shape[0] < 10:
+                logger.warning("Clustering: not enough aligned data, using all pairs")
+                return _all_pairs(assets)
+
+            returns = df.pct_change().dropna()
+            corr = returns.corr()
+            cols = list(corr.columns)
+
+            dist = 1.0 - corr.values
+            dist = (dist + dist.T) / 2.0  # enforce symmetry
+            np.fill_diagonal(dist, 0.0)
+            dist = np.clip(dist, 0.0, 2.0)
+
+            condensed = squareform(dist, checks=False)
+            Z = linkage(condensed, method='average')
+            labels = fcluster(Z, t=config.cluster_distance, criterion='distance')
+
+            clusters: Dict[int, List[str]] = {}
+            for col, lab in zip(cols, labels):
+                clusters.setdefault(int(lab), []).append(col)
+
+            pairs = []
+            for members in clusters.values():
+                pairs.extend(_all_pairs(members))
+
+            all_n = len(cols) * (len(cols) - 1) // 2
+            logger.info(
+                f"Clustering: {len(cols)} assets -> {len(clusters)} clusters -> "
+                f"{len(pairs)} within-cluster pairs (vs {all_n} all-pairs)"
+            )
+            # Add back any assets dropped from the correlation matrix as their own
+            # singletons (no pairs) - they simply won't be tested.
+            return pairs if pairs else _all_pairs(assets)
+        except Exception as e:
+            logger.warning(f"Clustering failed ({e}), falling back to all pairs")
+            return _all_pairs(assets)
+
     def _test_pair(
         self,
         asset_a: str,
@@ -302,11 +416,22 @@ class PairsScreener:
             # Calculate spread for additional metrics
             spread = self.cointegration_tester.calculate_spread(price_a, price_b, beta, alpha)
             mean_spread = spread.mean()
-            
-            # Calculate current z-score
-            zscore = self.cointegration_tester.calculate_zscore(spread)
-            current_zscore = float(zscore.iloc[-1]) if len(zscore) > 0 else 0.0
-            
+
+            # Half-life of mean reversion (in bars of this timeframe)
+            half_life = self.cointegration_tester.half_life(spread)
+
+            # Current z-score. Prefer a rolling z-score (window = half-life) so
+            # the reading reflects only trailing information rather than peeking
+            # at the full-sample mean/std. Fall back to the static z-score when
+            # there is no usable half-life.
+            if half_life is not None and half_life >= 1:
+                window = int(min(max(half_life, 5), max(5, len(spread) // 2)))
+                rolling_z = self.cointegration_tester.rolling_zscore(spread, window)
+                current_zscore = float(rolling_z.iloc[-1]) if len(rolling_z) > 0 else 0.0
+            else:
+                zscore = self.cointegration_tester.calculate_zscore(spread)
+                current_zscore = float(zscore.iloc[-1]) if len(zscore) > 0 else 0.0
+
             result = {
                 'asset_a': asset_a,
                 'asset_b': asset_b,
@@ -319,8 +444,27 @@ class PairsScreener:
                 'beta': beta,
                 'spread_std': spread_std,
                 'mean_spread': mean_spread,
-                'current_zscore': current_zscore
+                'current_zscore': current_zscore,
+                'half_life': half_life,
             }
+
+            # Expected NET edge per round-trip trade, after costs. A pair that is
+            # statistically perfect but whose mean-reversion amplitude doesn't
+            # clear fees + funding is not tradeable. spread_std is already a % of
+            # price A, so the gross move from |z|=entry back to 0 is
+            # entry_z * spread_std (%). Costs: 4 taker fills (open+close, 2 legs)
+            # plus funding over the holding period (~ half-life).
+            entry_z = config.entry_zscore
+            gross_edge_pct = entry_z * spread_std
+            fee_slip_pct = 4.0 * (config.taker_fee_bps + config.slippage_bps) * 0.01
+            bar_hours = TIMEFRAME_MS.get(config.timeframe, TIMEFRAME_MS['1d']) / 3_600_000.0
+            if half_life is not None and half_life > 0:
+                holding_hours = half_life * bar_hours
+                funding_pct = (holding_hours / 8.0) * config.funding_bps_per_8h * 0.01
+            else:
+                funding_pct = 0.0
+            net_edge_pct = gross_edge_pct - fee_slip_pct - funding_pct
+            result['expected_net_edge_pct'] = float(net_edge_pct)
             
             # Optional: Calculate Hurst exponent
             if config.include_hurst:
@@ -340,8 +484,21 @@ class PairsScreener:
             adf_score = max(0.0, min(1.0, adf_score))  # Clamp to [0, 1]
             hurst_score = 1.0 - abs(hurst - 0.5) * 2  # 0-1 (better if closer to 0.5)
             hurst_score = max(0.0, min(1.0, hurst_score))  # Clamp to [0, 1]
-            
-            composite_score = (correlation_score * 0.5 + adf_score * 0.3 + hurst_score * 0.2) * 100
+
+            # Net-edge score: fraction of the gross reversion that survives costs.
+            # 0 when the trade doesn't clear fees+funding, 1 when costs are
+            # negligible relative to the move.
+            if gross_edge_pct > 0:
+                net_edge_score = max(0.0, min(1.0, net_edge_pct / gross_edge_pct))
+            else:
+                net_edge_score = 0.0
+
+            composite_score = (
+                correlation_score * 0.4
+                + adf_score * 0.25
+                + hurst_score * 0.15
+                + net_edge_score * 0.2
+            ) * 100
             result['composite_score'] = composite_score
             
             return result

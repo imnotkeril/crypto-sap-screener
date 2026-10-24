@@ -26,3 +26,28 @@ class ScreeningConfig(BaseModel):
     include_hurst: bool = False
     min_volume_usd: float = 1_000_000  # 1M USD minimum volume
 
+    # Mean-reversion half-life filter (in bars of the chosen timeframe).
+    # Pairs reverting faster than min (noise/unstable) or slower than max
+    # (too few trades) are rejected when the bound is set. None = no bound.
+    min_half_life: Optional[float] = 1.0
+    max_half_life: Optional[float] = None
+    # Apply Benjamini-Hochberg FDR correction across all candidate p-values to
+    # control false discoveries from testing thousands of pairs. alpha =
+    # max_adf_pvalue. When False, the raw per-pair p-value threshold is used.
+    use_fdr: bool = True
+
+    # Pre-cluster the universe (by return correlation) and only form pairs within
+    # a cluster, instead of testing all N*(N-1)/2 combinations. Cuts the number
+    # of statistical tests (and false discoveries) and focuses on economically
+    # related assets. cluster_distance is the 1-correlation linkage cutoff
+    # (0.5 ~ groups assets whose returns correlate above ~0.5).
+    use_clustering: bool = False
+    cluster_distance: float = 0.5
+
+    # Trading cost model (per-run overridable; defaults mirror app.config). Used
+    # to score pairs by NET edge after fees + funding, not just statistical fit.
+    taker_fee_bps: float = 5.0  # per fill (Binance USDT-M taker ~0.05%)
+    slippage_bps: float = 2.0  # per fill
+    funding_bps_per_8h: float = 1.0  # avg |funding| ~0.01%/8h
+    entry_zscore: float = 2.0  # z assumed for the entry/exit edge calc
+

@@ -38,6 +38,8 @@ class PairResult(BaseModel):
     beta: float
     spread_std: float
     hurst_exponent: Optional[float] = None
+    half_life: Optional[float] = None
+    expected_net_edge_pct: Optional[float] = None
     screening_date: datetime
     lookback_days: int
     timeframe: Optional[str] = None

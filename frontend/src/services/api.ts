@@ -34,6 +34,11 @@ export interface ScreeningConfig {
   max_adf_pvalue?: number;
   include_hurst?: boolean;
   min_volume_usd?: number;
+  min_half_life?: number | null;
+  max_half_life?: number | null;
+  use_fdr?: boolean;
+  use_clustering?: boolean;
+  cluster_distance?: number;
 }
 
 export interface PairResult {
@@ -46,6 +51,8 @@ export interface PairResult {
   beta: number;
   spread_std: number;
   hurst_exponent?: number;
+  half_life?: number;
+  expected_net_edge_pct?: number;
   screening_date: string;
   lookback_days: number;
   timeframe?: string;

@@ -41,6 +41,15 @@ const ScreenerSettings: React.FC<ScreenerSettingsProps> = ({ onSettingsApplied }
     max_adf_pvalue: 0.10,
     include_hurst: true,
     min_volume_usd: 1_000_000,
+    min_half_life: 1,
+    max_half_life: null,
+    use_fdr: true,
+    use_clustering: false,
+    cluster_distance: 0.5,
+    taker_fee_bps: 5,
+    slippage_bps: 2,
+    funding_bps_per_8h: 1,
+    entry_zscore: 2,
   });
 
   const currentTimeframe = TIMEFRAMES.find((t) => t.value === settings.timeframe) || TIMEFRAMES[5];
@@ -284,6 +293,124 @@ const ScreenerSettings: React.FC<ScreenerSettingsProps> = ({ onSettingsApplied }
                 <label htmlFor="include_hurst" className="text-sm text-gray-300">
                   Include Hurst Exponent calculation
                 </label>
+              </div>
+
+              {/* Methodology & cost controls */}
+              <div className="pt-4 border-t border-[#1a1a24] space-y-4">
+                <h3 className="text-sm font-semibold text-gray-200">Methodology &amp; costs</h3>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs text-gray-400 mb-1">Min half-life (bars)</label>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.5"
+                      value={settings.min_half_life ?? ''}
+                      onChange={(e) => setSettings({ ...settings, min_half_life: e.target.value ? parseFloat(e.target.value) : null })}
+                      className="w-full px-2 py-1.5 text-sm bg-[#1a1a24] border border-[#2a2a34] rounded text-gray-200"
+                      placeholder="none"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-gray-400 mb-1">Max half-life (bars)</label>
+                    <input
+                      type="number"
+                      min="0"
+                      step="1"
+                      value={settings.max_half_life ?? ''}
+                      onChange={(e) => setSettings({ ...settings, max_half_life: e.target.value ? parseFloat(e.target.value) : null })}
+                      className="w-full px-2 py-1.5 text-sm bg-[#1a1a24] border border-[#2a2a34] rounded text-gray-200"
+                      placeholder="none"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-3">
+                  <input
+                    type="checkbox"
+                    id="use_fdr"
+                    checked={settings.use_fdr ?? true}
+                    onChange={(e) => setSettings({ ...settings, use_fdr: e.target.checked })}
+                    className="w-4 h-4 text-emerald-500 bg-[#1a1a24] border-[#2a2a34] rounded focus:ring-emerald-500"
+                  />
+                  <label htmlFor="use_fdr" className="text-sm text-gray-300">
+                    FDR correction (Benjamini-Hochberg) — controls false discoveries across all tested pairs
+                  </label>
+                </div>
+
+                <div className="flex items-center gap-3">
+                  <input
+                    type="checkbox"
+                    id="use_clustering"
+                    checked={settings.use_clustering ?? false}
+                    onChange={(e) => setSettings({ ...settings, use_clustering: e.target.checked })}
+                    className="w-4 h-4 text-emerald-500 bg-[#1a1a24] border-[#2a2a34] rounded focus:ring-emerald-500"
+                  />
+                  <label htmlFor="use_clustering" className="text-sm text-gray-300">
+                    Pre-cluster universe (only test within-cluster pairs)
+                  </label>
+                </div>
+
+                {settings.use_clustering && (
+                  <div>
+                    <label className="block text-xs text-gray-400 mb-1">
+                      Cluster distance (1 − corr): {(settings.cluster_distance ?? 0.5).toFixed(2)}
+                    </label>
+                    <input
+                      type="range"
+                      min="0.1"
+                      max="0.9"
+                      step="0.05"
+                      value={settings.cluster_distance ?? 0.5}
+                      onChange={(e) => setSettings({ ...settings, cluster_distance: parseFloat(e.target.value) })}
+                      className="w-full h-2 bg-[#1a1a24] rounded-lg appearance-none cursor-pointer accent-emerald-500"
+                    />
+                  </div>
+                )}
+
+                <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+                  <div>
+                    <label className="block text-xs text-gray-400 mb-1">Entry z</label>
+                    <input
+                      type="number" min="0" step="0.5"
+                      value={settings.entry_zscore ?? 2}
+                      onChange={(e) => setSettings({ ...settings, entry_zscore: parseFloat(e.target.value) || 0 })}
+                      className="w-full px-2 py-1.5 text-sm bg-[#1a1a24] border border-[#2a2a34] rounded text-gray-200"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-gray-400 mb-1">Taker fee (bps)</label>
+                    <input
+                      type="number" min="0" step="0.5"
+                      value={settings.taker_fee_bps ?? 5}
+                      onChange={(e) => setSettings({ ...settings, taker_fee_bps: parseFloat(e.target.value) || 0 })}
+                      className="w-full px-2 py-1.5 text-sm bg-[#1a1a24] border border-[#2a2a34] rounded text-gray-200"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-gray-400 mb-1">Slippage (bps)</label>
+                    <input
+                      type="number" min="0" step="0.5"
+                      value={settings.slippage_bps ?? 2}
+                      onChange={(e) => setSettings({ ...settings, slippage_bps: parseFloat(e.target.value) || 0 })}
+                      className="w-full px-2 py-1.5 text-sm bg-[#1a1a24] border border-[#2a2a34] rounded text-gray-200"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-gray-400 mb-1">Funding (bps/8h)</label>
+                    <input
+                      type="number" min="0" step="0.5"
+                      value={settings.funding_bps_per_8h ?? 1}
+                      onChange={(e) => setSettings({ ...settings, funding_bps_per_8h: parseFloat(e.target.value) || 0 })}
+                      className="w-full px-2 py-1.5 text-sm bg-[#1a1a24] border border-[#2a2a34] rounded text-gray-200"
+                    />
+                  </div>
+                </div>
+                <p className="text-2xs text-gray-500">
+                  Net edge per round-trip = entry_z × spread σ% − 4×(fee+slippage) − funding over the half-life.
+                  Pairs that can't clear costs are penalized in the composite score.
+                </p>
               </div>
 
               <div className="flex gap-3 pt-4 border-t border-[#1a1a24]">
