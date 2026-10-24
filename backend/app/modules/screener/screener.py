@@ -162,10 +162,13 @@ class PairsScreener:
                 return False
             return True
 
+        # Candidates: pass the correlation and half-life filters. The p-value
+        # filter is applied below - via BH-FDR over *all* candidates when
+        # config.use_fdr (so the number of tests m is not shrunk by a raw
+        # p-value pre-filter), otherwise as a plain threshold.
         filtered_results = [
             r for r in results
             if r['correlation'] >= config.min_correlation
-            and r['adf_pvalue'] <= config.max_adf_pvalue
             and _half_life_ok(r)
         ]
 
@@ -174,6 +177,7 @@ class PairsScreener:
         # p<0.10 => ~495 spurious "cointegrated" pairs from noise alone).
         # Benjamini-Hochberg FDR controls the expected fraction of false
         # positives among the selected pairs.
+        fdr_done = False
         if config.use_fdr and len(filtered_results) > 1:
             try:
                 from statsmodels.stats.multitest import multipletests
@@ -191,8 +195,13 @@ class PairsScreener:
                     f"kept {len(kept)}/{len(filtered_results)} pairs"
                 )
                 filtered_results = kept
+                fdr_done = True
             except Exception as e:
                 logger.warning(f"FDR correction failed, using raw p-values: {e}")
+        if not fdr_done:
+            filtered_results = [
+                r for r in filtered_results if r['adf_pvalue'] <= config.max_adf_pvalue
+            ]
 
         # Sort by combined score (correlation * (1 - adf_pvalue))
         filtered_results.sort(
@@ -392,7 +401,7 @@ class PairsScreener:
             is_cointegrated, beta, adf_stat, adf_pvalue, spread_std = \
                 self.cointegration_tester.engle_granger_test(price_a, price_b)
             
-            if not is_cointegrated:
+            if not is_cointegrated and not config.use_fdr:
                 return None
             
             # Final strict correlation check
@@ -482,7 +491,7 @@ class PairsScreener:
             correlation_score = corr  # 0-1
             adf_score = 1.0 - (adf_pvalue / 0.1)  # 0-1 (better if lower p-value)
             adf_score = max(0.0, min(1.0, adf_score))  # Clamp to [0, 1]
-            hurst_score = 1.0 - abs(hurst - 0.5) * 2  # 0-1 (better if closer to 0.5)
+            hurst_score = (0.5 - hurst) / 0.5 if result.get('hurst_exponent') is not None else 0.0  # 0-1 (better if H < 0.5: mean reverting)
             hurst_score = max(0.0, min(1.0, hurst_score))  # Clamp to [0, 1]
 
             # Net-edge score: fraction of the gross reversion that survives costs.

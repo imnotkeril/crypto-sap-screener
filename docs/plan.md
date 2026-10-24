@@ -1,10 +1,10 @@
 # Plan (finish after audit)
 
-- [ ] T1 adopt docs + WIP committed (check: git clean)
-- [ ] T2 auth (API key) + CORS allowlist + cron/run protection + rate limit
-- [ ] T3 remove /debug/db, stop leaking str(e)
-- [ ] T4 validate pair_id in alerts/positions
-- [ ] T5 bump fastapi/starlette/python-multipart/anyio/python-dotenv (pip-audit clean)
+- [x] T1 adopt docs + WIP committed (check: git clean)
+- [x] T2 auth (API key) + CORS allowlist + cron/run protection + rate limit
+- [x] T3 remove /debug/db, stop leaking str(e)
+- [x] T4 validate pair_id in alerts/positions
+- [x] T5 bump fastapi/starlette/python-multipart/anyio/python-dotenv (pip-audit clean)
 - [ ] T6 compose: ports 127.0.0.1, env passwords, prod frontend build, non-root, healthcheck
 - [ ] T7 beta/Hurst regression (log prices) + tests
 - [ ] T8 live monitor fix

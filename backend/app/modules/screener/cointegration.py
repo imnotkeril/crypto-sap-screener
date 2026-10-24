@@ -95,6 +95,9 @@ class CointegrationTester:
                 eg_statistic, eg_pvalue = eg_stat_ba, eg_p_ba
             else:
                 eg_statistic, eg_pvalue = eg_stat_ab, eg_p_ab
+            # Taking the better of two directional tests is two looks at the
+            # data: Bonferroni-adjust so the reported p-value stays honest.
+            eg_pvalue = min(1.0, 2.0 * eg_pvalue)
 
             # Cointegrated if p-value < 0.10
             is_cointegrated = eg_pvalue < 0.10
