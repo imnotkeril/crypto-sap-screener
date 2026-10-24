@@ -5,7 +5,7 @@ A modular system for screening cryptocurrency pairs for statistical arbitrage op
 ## Project Structure
 
 ```
-stat_arb_system/
+statistical-arbitrage-pairs-screener/
 ├── backend/          # FastAPI backend
 ├── frontend/         # React frontend
 └── README.md
@@ -65,9 +65,9 @@ The application uses SQLite by default (no additional setup required).
 
 The database file will be created automatically at `backend/data/stat_arb.db` on first backend startup.
 
-Optionally, create a `.env` file in the project root to customize settings:
+Optionally, create `backend/.env` (the backend reads `.env` from its working directory) to customize settings; all variables are listed in `.env.example`:
 ```bash
-cp .env.example .env
+cp .env.example backend/.env
 ```
 
 ### 4. Run the Application
@@ -86,6 +86,14 @@ npm run dev
 
 The application will be available at: http://localhost:5173
 
+### 5. Docker (full stack)
+
+```bash
+docker compose up -d --build
+```
+
+Frontend: http://localhost:3100, backend: http://localhost:8000, data layer: http://localhost:8001. Note: the default compose publishes Redis/Postgres ports and uses development credentials; do not expose it publicly as is.
+
 ## API Endpoints
 
 - `GET /api/v1/screener/status` - Screening status
@@ -93,6 +101,7 @@ The application will be available at: http://localhost:5173
 - `GET /api/v1/screener/results` - Screening results
 - `GET /api/v1/screener/pairs/{pair_id}` - Pair details
 - `GET /api/v1/screener/stats` - Statistics
+- `GET /health` - Health check (also `/api/v1/alerts`, `/positions`, `/backtester`, `/live`)
 
 API documentation is available at: http://localhost:8000/docs
 
