@@ -13,6 +13,7 @@ snapshot is recomputed synchronously on each request. History for sparklines
 is persisted to the database (table `intraday_snapshots`).
 """
 import logging
+import threading
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional
 
@@ -55,6 +56,8 @@ class IntradayMonitor:
         self.snapshot: List[Dict] = []
         self.last_update: Optional[datetime] = None
         self.last_error: Optional[str] = None
+        self.skipped_pairs = 0
+        self._lock = threading.Lock()
 
         self.data_loader = DataLoader()
 
@@ -71,12 +74,18 @@ class IntradayMonitor:
         pass
 
     def get_snapshot(self) -> Dict:
-        try:
-            self._update()
-            self.last_error = None
-        except Exception as e:
-            logger.error(f"Intraday monitor error: {e}")
-            self.last_error = str(e)
+        with self._lock:
+            fresh = (
+                self.last_update is not None
+                and (datetime.utcnow() - self.last_update).total_seconds() < self.interval
+            )
+            if not fresh:
+                try:
+                    self._update()
+                    self.last_error = None
+                except Exception as e:
+                    logger.error(f"Intraday monitor error: {e}")
+                    self.last_error = "Live update failed; see server logs"
 
         return {
             'pairs': [p.copy() for p in self.snapshot],
@@ -85,6 +94,7 @@ class IntradayMonitor:
             'interval_seconds': self.interval,
             'alert_threshold': self.alert_threshold,
             'last_error': self.last_error,
+            'skipped_pairs': self.skipped_pairs,
         }
 
     def get_history(self, asset_a: str, asset_b: str) -> List[Dict]:
@@ -115,6 +125,15 @@ class IntradayMonitor:
             except Exception:
                 pass
 
+    def _recent_prices(self, asset: str, fetched: Dict[str, pd.Series]) -> pd.Series:
+        """Fresh intraday closes (bypasses the screener's long-lived price cache)."""
+        if asset not in fetched:
+            df = self.data_loader.fetch_ohlcv(
+                asset, days=self.kalman_days, timeframe=self.kalman_timeframe
+            )
+            fetched[asset] = df['close'] if df is not None and not df.empty else pd.Series(dtype=float)
+        return fetched[asset]
+
     def _update(self):
         live = get_live_screener()
         daily_results = live.get_results()
@@ -130,6 +149,8 @@ class IntradayMonitor:
         now = datetime.utcnow()
         snapshot = []
         db_rows = []
+        fetched: Dict[str, pd.Series] = {}
+        skipped = 0
 
         for r in candidates:
             a, b = r['asset_a'], r['asset_b']
@@ -138,18 +159,16 @@ class IntradayMonitor:
             # reusing the (possibly stale) daily fit. The last candle close is
             # effectively the live price (ccxt returns the forming candle).
             try:
-                price_a = self.data_loader.get_price_series(
-                    a, days=self.kalman_days, timeframe=self.kalman_timeframe
-                )
-                price_b = self.data_loader.get_price_series(
-                    b, days=self.kalman_days, timeframe=self.kalman_timeframe
-                )
+                price_a = self._recent_prices(a, fetched)
+                price_b = self._recent_prices(b, fetched)
             except Exception as e:
-                logger.debug(f"Intraday monitor: candle fetch failed for {a}/{b}: {e}")
+                logger.warning(f"Intraday monitor: candle fetch failed for {a}/{b}: {e}")
+                skipped += 1
                 continue
 
             aligned = pd.DataFrame({'a': price_a, 'b': price_b}).dropna()
             if len(aligned) < MIN_KALMAN_BARS:
+                skipped += 1
                 continue
 
             kf = self.kalman.run(aligned['a'], aligned['b'])
@@ -197,6 +216,7 @@ class IntradayMonitor:
 
         snapshot.sort(key=lambda x: abs(x['zscore']), reverse=True)
         self.snapshot = snapshot
+        self.skipped_pairs = skipped
         self.last_update = now
 
         self._persist_snapshots(db_rows, now)

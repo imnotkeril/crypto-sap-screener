@@ -235,7 +235,12 @@ class DataLoader:
                     # Log request details for debugging
                     if symbol in ['1000SHIB', 'SHIB', 'GALA'] or days > 200:
                         print(f"  DEBUG {symbol}: Requesting {num_candles} {timeframe} candles, since={since} ({(self.exchange.milliseconds() - since) / (24*60*60*1000):.1f} days ago)")
-                    ohlcv = self.exchange.fetch_ohlcv(symbol_pair, timeframe, since=since)
+                    # Explicit limit: without it Binance returns only 500 candles, which made
+                    # 5m/1m lookbacks look like 'insufficient data'.
+                    ohlcv = self.exchange.fetch_ohlcv(
+                        symbol_pair, timeframe, since=since,
+                        limit=min(num_candles + 5, max_candles_per_request)
+                    )
                     if symbol in ['1000SHIB', 'SHIB', 'GALA'] or days > 200:
                         print(f"  DEBUG {symbol}: Received {len(ohlcv) if ohlcv else 0} candles from API")
                 else:
