@@ -11,6 +11,7 @@ from app.database import Alert as DbAlert
 from app.modules.alerts.alert_manager import AlertManager
 import logging
 
+from app.api.validation import ensure_pair_exists
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
@@ -56,7 +57,7 @@ async def get_alerts(pair_id: Optional[int] = None, db: Session = Depends(get_db
         return {'alerts': [alert.to_dict() for alert in alerts], 'total': len(alerts)}
     except Exception as e:
         logger.error(f"Error getting alerts: {e}")
-        raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.post("/")
@@ -69,6 +70,7 @@ async def create_alert(
     , db: Session = Depends(get_db)
 ):
     """Create a new alert"""
+    ensure_pair_exists(db, pair_id, asset_a, asset_b)
     try:
         if db is not None:
             # Default thresholds
@@ -104,7 +106,7 @@ async def create_alert(
         return alert.to_dict()
     except Exception as e:
         logger.error(f"Error creating alert: {e}")
-        raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.get("/{alert_id}")
@@ -136,7 +138,7 @@ async def get_alert(alert_id: int, db: Session = Depends(get_db)):
         raise
     except Exception as e:
         logger.error(f"Error getting alert: {e}")
-        raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.put("/{alert_id}")
@@ -182,7 +184,7 @@ async def update_alert(
         raise
     except Exception as e:
         logger.error(f"Error updating alert: {e}")
-        raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.delete("/{alert_id}")
@@ -206,7 +208,7 @@ async def delete_alert(alert_id: int, db: Session = Depends(get_db)):
         raise
     except Exception as e:
         logger.error(f"Error deleting alert: {e}")
-        raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.get("/triggered/check")
@@ -244,5 +246,5 @@ async def check_triggered_alerts():
         }
     except Exception as e:
         logger.error(f"Error checking triggered alerts: {e}")
-        raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Internal server error")
 

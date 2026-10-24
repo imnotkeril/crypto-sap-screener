@@ -11,6 +11,7 @@ from app.database import Position as DbPosition
 from app.modules.positions.position_manager import PositionManager
 import logging
 
+from app.api.validation import ensure_pair_exists
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
@@ -43,6 +44,7 @@ class CreatePositionRequest(BaseModel):
 @router.post("/")
 async def create_position(request: CreatePositionRequest, db: Session = Depends(get_db)):
     """Create a new position"""
+    ensure_pair_exists(db, request.pair_id, request.asset_a, request.asset_b)
     try:
         if db is not None:
             row = DbPosition(
@@ -92,7 +94,7 @@ async def create_position(request: CreatePositionRequest, db: Session = Depends(
         return position.to_dict()
     except Exception as e:
         logger.error(f"Error creating position: {e}")
-        raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.get("/")
@@ -128,7 +130,7 @@ async def get_positions(db: Session = Depends(get_db)):
         }
     except Exception as e:
         logger.error(f"Error getting positions: {e}")
-        raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.get("/{position_id}")
@@ -164,7 +166,7 @@ async def get_position(position_id: int, db: Session = Depends(get_db)):
         raise
     except Exception as e:
         logger.error(f"Error getting position: {e}")
-        raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.delete("/{position_id}")
@@ -188,7 +190,7 @@ async def delete_position(position_id: int, db: Session = Depends(get_db)):
         raise
     except Exception as e:
         logger.error(f"Error deleting position: {e}")
-        raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.get("/{position_id}/pnl")
@@ -231,5 +233,5 @@ async def get_position_pnl(
         raise
     except Exception as e:
         logger.error(f"Error calculating P&L: {e}")
-        raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Internal server error")
 
