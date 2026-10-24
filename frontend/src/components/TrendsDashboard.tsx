@@ -1,6 +1,6 @@
 import React from 'react';
 import { useQuery } from 'react-query';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { api } from '../services/api';
 
 const TrendsDashboard: React.FC = () => {
@@ -10,7 +10,7 @@ const TrendsDashboard: React.FC = () => {
     { refetchInterval: 30000 }
   );
 
-  const { data: comparisonData, isLoading: comparisonLoading } = useQuery(
+  const { isLoading: comparisonLoading } = useQuery(
     'comparison',
     () => api.getComparison(),
     { refetchInterval: 30000 }
@@ -26,7 +26,6 @@ const TrendsDashboard: React.FC = () => {
   }
 
   const trends = trendsData || {};
-  const comparison = comparisonData || { changes: [] };
 
   // Format trends data for charts
   const pairsCountData = (trends.total_pairs_trend || []).map((point: any) => ({

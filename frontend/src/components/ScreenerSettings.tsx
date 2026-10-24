@@ -43,7 +43,7 @@ const ScreenerSettings: React.FC<ScreenerSettingsProps> = ({ onSettingsApplied }
     min_volume_usd: 1_000_000,
     min_half_life: 1,
     max_half_life: null,
-    use_fdr: true,
+    use_fdr: false,
     use_clustering: false,
     cluster_distance: 0.5,
     taker_fee_bps: 5,
@@ -227,14 +227,14 @@ const ScreenerSettings: React.FC<ScreenerSettingsProps> = ({ onSettingsApplied }
 
               <div>
                 <label className="block text-sm font-medium text-gray-300 mb-2">
-                  Min Correlation: {settings.min_correlation.toFixed(2)}
+                  Min Correlation: {(settings.min_correlation ?? 0.8).toFixed(2)}
                 </label>
                 <input
                   type="range"
                   min="0"
                   max="1"
                   step="0.01"
-                  value={settings.min_correlation}
+                  value={settings.min_correlation ?? 0.8}
                   onChange={(e) => setSettings({ ...settings, min_correlation: parseFloat(e.target.value) })}
                   className="w-full h-2 bg-[#1a1a24] rounded-lg appearance-none cursor-pointer accent-emerald-500"
                 />
@@ -246,14 +246,14 @@ const ScreenerSettings: React.FC<ScreenerSettingsProps> = ({ onSettingsApplied }
 
               <div>
                 <label className="block text-sm font-medium text-gray-300 mb-2">
-                  Max ADF p-value: {settings.max_adf_pvalue.toFixed(2)}
+                  Max ADF p-value: {(settings.max_adf_pvalue ?? 0.1).toFixed(2)}
                 </label>
                 <input
                   type="range"
                   min="0"
                   max="0.5"
                   step="0.01"
-                  value={settings.max_adf_pvalue}
+                  value={settings.max_adf_pvalue ?? 0.1}
                   onChange={(e) => setSettings({ ...settings, max_adf_pvalue: parseFloat(e.target.value) })}
                   className="w-full h-2 bg-[#1a1a24] rounded-lg appearance-none cursor-pointer accent-emerald-500"
                 />
@@ -265,14 +265,14 @@ const ScreenerSettings: React.FC<ScreenerSettingsProps> = ({ onSettingsApplied }
 
               <div>
                 <label className="block text-sm font-medium text-gray-300 mb-2">
-                  Min Volume USD: {(settings.min_volume_usd / 1_000_000).toFixed(1)}M
+                  Min Volume USD: {((settings.min_volume_usd ?? 1_000_000) / 1_000_000).toFixed(1)}M
                 </label>
                 <input
                   type="range"
                   min="0"
                   max="100"
                   step="1"
-                  value={settings.min_volume_usd / 1_000_000}
+                  value={(settings.min_volume_usd ?? 1_000_000) / 1_000_000}
                   onChange={(e) => setSettings({ ...settings, min_volume_usd: parseFloat(e.target.value) * 1_000_000 })}
                   className="w-full h-2 bg-[#1a1a24] rounded-lg appearance-none cursor-pointer accent-emerald-500"
                 />
@@ -330,7 +330,7 @@ const ScreenerSettings: React.FC<ScreenerSettingsProps> = ({ onSettingsApplied }
                   <input
                     type="checkbox"
                     id="use_fdr"
-                    checked={settings.use_fdr ?? true}
+                    checked={settings.use_fdr ?? false}
                     onChange={(e) => setSettings({ ...settings, use_fdr: e.target.checked })}
                     className="w-4 h-4 text-emerald-500 bg-[#1a1a24] border-[#2a2a34] rounded focus:ring-emerald-500"
                   />

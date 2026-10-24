@@ -39,6 +39,10 @@ export interface ScreeningConfig {
   use_fdr?: boolean;
   use_clustering?: boolean;
   cluster_distance?: number;
+  taker_fee_bps?: number;
+  slippage_bps?: number;
+  funding_bps_per_8h?: number;
+  entry_zscore?: number;
 }
 
 export interface PairResult {

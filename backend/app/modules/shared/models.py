@@ -33,8 +33,10 @@ class ScreeningConfig(BaseModel):
     max_half_life: Optional[float] = None
     # Apply Benjamini-Hochberg FDR correction across all candidate p-values to
     # control false discoveries from testing thousands of pairs. alpha =
-    # max_adf_pvalue. When False, the raw per-pair p-value threshold is used.
-    use_fdr: bool = True
+    # max_adf_pvalue. Strict: with hundreds of candidates it often returns
+    # nothing, so it is opt-in. When False the raw per-pair p-value threshold
+    # is used (q-values are still attached as adf_pvalue_fdr).
+    use_fdr: bool = False
 
     # Pre-cluster the universe (by return correlation) and only form pairs within
     # a cluster, instead of testing all N*(N-1)/2 combinations. Cuts the number

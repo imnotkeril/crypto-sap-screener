@@ -10,7 +10,7 @@ interface BacktestSectionProps {
 
 type StopLossType = 'none' | 'zscore' | 'percent' | 'atr';
 
-const BacktestSection: React.FC<BacktestSectionProps> = ({ pair, spreadData }) => {
+const BacktestSection: React.FC<BacktestSectionProps> = ({ pair }) => {
   const [showForm, setShowForm] = useState(false);
   const [showResults, setShowResults] = useState(false);
   const [sessionId, setSessionId] = useState<number | null>(null);

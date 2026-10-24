@@ -69,40 +69,6 @@ const PairsTable: React.FC<PairsTableProps> = ({ pairs }) => {
     setSpreadData(null);
   };
 
-  const handleExportCSV = async () => {
-    try {
-      const response = await api.exportResultsCSV(filteredAndSortedPairs.length);
-      const blob = new Blob([response], { type: 'text/csv' });
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `pairs_screener_${new Date().toISOString().split('T')[0]}.csv`;
-      document.body.appendChild(a);
-      a.click();
-      window.URL.revokeObjectURL(url);
-      document.body.removeChild(a);
-    } catch (error) {
-      console.error('Error exporting CSV:', error);
-    }
-  };
-
-  const handleExportExcel = async () => {
-    try {
-      const response = await api.exportResultsExcel(filteredAndSortedPairs.length);
-      const blob = new Blob([response], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `pairs_screener_${new Date().toISOString().split('T')[0]}.xlsx`;
-      document.body.appendChild(a);
-      a.click();
-      window.URL.revokeObjectURL(url);
-      document.body.removeChild(a);
-    } catch (error) {
-      console.error('Error exporting Excel:', error);
-    }
-  };
-
   const handleSort = (field: SortField) => {
     if (sortField === field) {
       setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
@@ -117,8 +83,8 @@ const PairsTable: React.FC<PairsTableProps> = ({ pairs }) => {
     let filtered = pairs.filter(pair => {
       if (pair.correlation < minCorrelation) return false;
       if (pair.adf_pvalue > maxADFPValue) return false;
-      if (minHurst !== null && (pair.hurst_exponent === null || pair.hurst_exponent < minHurst)) return false;
-      if (maxHurst !== null && (pair.hurst_exponent === null || pair.hurst_exponent > maxHurst)) return false;
+      if (minHurst !== null && (pair.hurst_exponent == null || pair.hurst_exponent < minHurst)) return false;
+      if (maxHurst !== null && (pair.hurst_exponent == null || pair.hurst_exponent > maxHurst)) return false;
       if (minZScore !== null && (pair.current_zscore === null || pair.current_zscore === undefined || pair.current_zscore < minZScore)) return false;
       if (maxZScore !== null && (pair.current_zscore === null || pair.current_zscore === undefined || pair.current_zscore > maxZScore)) return false;
       if (minBeta !== null && pair.beta < minBeta) return false;

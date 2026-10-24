@@ -177,25 +177,27 @@ class PairsScreener:
         # p<0.10 => ~495 spurious "cointegrated" pairs from noise alone).
         # Benjamini-Hochberg FDR controls the expected fraction of false
         # positives among the selected pairs.
+        # q-values are always attached (adf_pvalue_fdr) so the UI can show how
+        # significant a pair is after correcting for the number of tests, even
+        # when FDR filtering is off.
         fdr_done = False
-        if config.use_fdr and len(filtered_results) > 1:
+        if len(filtered_results) > 1:
             try:
                 from statsmodels.stats.multitest import multipletests
                 pvals = [r['adf_pvalue'] for r in filtered_results]
                 reject, pvals_corrected, _, _ = multipletests(
                     pvals, alpha=config.max_adf_pvalue, method='fdr_bh'
                 )
-                kept = []
-                for r, rej, pc in zip(filtered_results, reject, pvals_corrected):
-                    if rej:
-                        r['adf_pvalue_fdr'] = float(pc)
-                        kept.append(r)
-                logger.info(
-                    f"FDR (Benjamini-Hochberg @ alpha={config.max_adf_pvalue}): "
-                    f"kept {len(kept)}/{len(filtered_results)} pairs"
-                )
-                filtered_results = kept
-                fdr_done = True
+                for r, pc in zip(filtered_results, pvals_corrected):
+                    r['adf_pvalue_fdr'] = float(pc)
+                if config.use_fdr:
+                    kept = [r for r, rej in zip(filtered_results, reject) if rej]
+                    logger.info(
+                        f"FDR (Benjamini-Hochberg @ alpha={config.max_adf_pvalue}): "
+                        f"kept {len(kept)}/{len(filtered_results)} pairs"
+                    )
+                    filtered_results = kept
+                    fdr_done = True
             except Exception as e:
                 logger.warning(f"FDR correction failed, using raw p-values: {e}")
         if not fdr_done:

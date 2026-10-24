@@ -232,7 +232,7 @@ const SpreadChart: React.FC<SpreadChartProps> = ({ pair, spreadData, meanSpread,
                 fill="#10b981"
                 shape={(props: any) => {
                   const { cx, cy, payload } = props;
-                  if (!payload || !cx || !cy) return null;
+                  if (!payload || !cx || !cy) return <g />;
                   const isEntry = payload.type?.includes('entry');
                   const color = isEntry ? '#10b981' : '#ef4444';
                   return (

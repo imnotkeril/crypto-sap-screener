@@ -82,5 +82,5 @@ def test_screen_finds_planted_pair_and_fdr_is_stricter():
     assert ("AAA", "BBB") in names
     raw = _screener(series).screen_pairs(_cfg(assets=list(series), use_fdr=False))
     assert len(with_fdr) <= len(raw)
-    for r in with_fdr:
-        assert r["adf_pvalue_fdr"] >= r["adf_pvalue"]
+    for r in with_fdr + raw:
+        assert r["adf_pvalue_fdr"] >= r["adf_pvalue"]  # q-values always attached
