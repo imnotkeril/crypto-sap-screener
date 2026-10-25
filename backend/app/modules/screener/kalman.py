@@ -20,7 +20,6 @@ where a_t = price of asset A, b_t = price of asset B.
 """
 import numpy as np
 import pandas as pd
-from typing import Optional
 
 
 class KalmanHedge:

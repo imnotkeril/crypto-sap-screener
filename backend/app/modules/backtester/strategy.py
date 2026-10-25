@@ -1,10 +1,9 @@
 """
 Trading strategies for pairs trading
 """
-from typing import Dict, List, Optional
+from typing import Optional
 from enum import Enum
 import pandas as pd
-import numpy as np
 
 
 class TradeSignal(Enum):

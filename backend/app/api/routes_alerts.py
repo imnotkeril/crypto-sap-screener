@@ -3,7 +3,7 @@ FastAPI routes for alerts management
 """
 from fastapi import APIRouter, HTTPException, Depends
 from sqlalchemy.orm import Session
-from typing import Optional, List
+from typing import Optional
 from datetime import datetime
 
 from app.database import get_db

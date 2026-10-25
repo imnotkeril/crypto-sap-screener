@@ -1,7 +1,6 @@
 """
 Main screener module that coordinates pair screening
 """
-import asyncio
 from concurrent.futures import ThreadPoolExecutor
 from typing import List, Optional, Dict
 from sqlalchemy.orm import Session
@@ -13,7 +12,7 @@ from app.modules.screener.data_loader import DataLoader, bars_for_lookback, TIME
 from app.modules.screener.cointegration import CointegrationTester
 from app.modules.screener.correlation import CorrelationAnalyzer
 from app.modules.screener.hurst import HurstCalculator
-from app.modules.shared.models import ScreeningConfig, PairInfo
+from app.modules.shared.models import ScreeningConfig
 
 logger = logging.getLogger(__name__)
 
@@ -145,7 +144,7 @@ class PairsScreener:
                     processed += 1
                     if processed % 50 == 0:
                         logger.info(f"Processed {processed}/{len(pairs)} pairs, found {len(results)} valid pairs so far")
-                except Exception as e:
+                except Exception:
                     processed += 1
                     if processed % 100 == 0:
                         logger.debug(f"Processed {processed}/{len(pairs)} pairs")

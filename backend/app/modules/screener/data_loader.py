@@ -3,7 +3,6 @@ Data loader for fetching cryptocurrency price data from Binance
 """
 import ccxt
 import pandas as pd
-from datetime import datetime, timedelta
 from typing import Optional, List, Dict
 from sqlalchemy.orm import Session
 from app.database import PriceDataCache
@@ -344,13 +343,13 @@ class DataLoader:
                             )
                             db.merge(price_data)  # Use merge to handle duplicates
                         db.commit()
-                    except Exception as db_error:
+                    except Exception:
                         # Database error is not critical
                         pass
                 
                 return df
                 
-            except ccxt.RateLimitExceeded as e:
+            except ccxt.RateLimitExceeded:
                 if attempt < max_retries - 1:
                     wait_time = retry_delay * (attempt + 1) * 5  # Longer wait for rate limit
                     print(f"Rate limit hit for {symbol}, waiting {wait_time}s before retry...")
@@ -501,7 +500,7 @@ class DataLoader:
                     # Verify we got enough data
                     if bars_received < expected_bars * 0.8:
                         print(f"⚠️  Warning: Only got {bars_received} {timeframe} candles for {symbol}, requested {expected_bars}")
-                        print(f"  → Possible reasons: asset recently listed, API error, or insufficient historical data")
+                        print("  → Possible reasons: asset recently listed, API error, or insufficient historical data")
                         # Cache this to avoid repeated requests
                         self._insufficient_data_symbols[insufficient_key] = bars_received
                         # Still return the data we have (might be useful for some pairs)

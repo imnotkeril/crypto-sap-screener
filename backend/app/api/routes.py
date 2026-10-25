@@ -2,7 +2,7 @@
 FastAPI routes for pairs screener
 Uses in-memory live screener for real-time data
 """
-from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, Response
+from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from typing import Optional
@@ -11,7 +11,7 @@ import io
 import pandas as pd
 
 from app.database import get_db
-from app.database import SessionLocal, ScreeningSession, PairsScreeningResult
+from app.database import ScreeningSession, PairsScreeningResult
 from app.api.schemas import (
     ScreeningConfigRequest,
     PairResult,
@@ -542,9 +542,7 @@ async def get_pair_spread_data(pair_id: int):
             raise HTTPException(status_code=404, detail="Pair not found")
         
         # Load price data and calculate spread
-        from app.modules.screener.screener import PairsScreener
         from app.modules.screener.data_loader import DataLoader
-        from app.modules.shared.models import ScreeningConfig
         from app.config import settings
         
         data_loader = DataLoader()
@@ -1124,7 +1122,6 @@ async def calculate_position(request: PositionCalculationRequest):
 async def get_pair_history(pair_id: int):
     """Get history of a specific pair across screening sessions"""
     try:
-        from app.modules.history.history_analyzer import HistoryAnalyzer
         
         live_screener = get_live_screener()
         history = live_screener.get_history()
@@ -1327,7 +1324,6 @@ async def export_pair_data(pair_id: int, format: str = "csv"):
         # Get spread data
         spread_data = None
         try:
-            from app.modules.screener.screener import PairsScreener
             from app.modules.screener.data_loader import DataLoader
             from app.config import settings
             

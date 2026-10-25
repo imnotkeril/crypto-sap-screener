@@ -27,3 +27,10 @@ dependencies = [
 
 [tool.vercel]
 entrypoint = "backend.serverless_entry:app"
+
+[tool.ruff]
+line-length = 120
+
+[tool.ruff.lint]
+select = ["E9", "F"]
+ignore = ["F841"]

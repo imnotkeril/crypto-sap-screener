@@ -4,7 +4,6 @@ Configuration settings for the application
 from pydantic_settings import BaseSettings
 from pydantic import field_validator
 from typing import Optional
-import os
 
 class Settings(BaseSettings):
     """Application settings loaded from environment variables"""

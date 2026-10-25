@@ -1,7 +1,7 @@
 """
 Database connection and session management
 """
-from sqlalchemy import create_engine, Column, Integer, String, Float, DateTime, Enum, JSON, Date, UniqueConstraint, text, ForeignKey
+from sqlalchemy import create_engine, Column, Integer, String, Float, DateTime, JSON, Date, UniqueConstraint, text, ForeignKey
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.engine.url import make_url
@@ -400,7 +400,7 @@ def get_db():
             # Use raw connection to avoid encoding issues
             result = db.execute(text("SELECT 1"))
             result.fetchone()
-        except UnicodeDecodeError as encoding_error:
+        except UnicodeDecodeError:
             # Handle encoding errors - disable database permanently
             if not _db_disabled:
                 # Only log once when first detected
@@ -415,7 +415,7 @@ def get_db():
                     pass
             yield None
             return
-        except Exception as test_error:
+        except Exception:
             # If test query fails (e.g., connection refused), that's OK - DB might not be running
             # Silently return None without logging (to avoid spam in logs)
             if db:

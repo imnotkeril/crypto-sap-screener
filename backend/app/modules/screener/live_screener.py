@@ -3,7 +3,7 @@ Live screener that runs continuously in the background
 Stores results in memory for real-time access
 """
 import threading
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import Optional, List, Dict
 import time
 import logging
@@ -252,7 +252,6 @@ class LiveScreener:
             
             # Check alerts after screening
             try:
-                from app.modules.alerts.alert_manager import AlertManager
                 from app.api.routes_alerts import get_alert_manager
                 alert_manager = get_alert_manager()
                 triggered = alert_manager.check_all_pairs(results)

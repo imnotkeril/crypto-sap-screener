@@ -1,7 +1,7 @@
 """
 Main backtester for pairs trading strategies
 """
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, Optional, Tuple
 from datetime import datetime
 import pandas as pd
 import numpy as np

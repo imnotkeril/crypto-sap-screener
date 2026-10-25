@@ -3,7 +3,6 @@ Shared data models for modules
 """
 from pydantic import BaseModel
 from typing import Optional
-from datetime import datetime
 
 
 class PairInfo(BaseModel):
