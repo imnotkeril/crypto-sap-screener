@@ -223,3 +223,6 @@ Commit: `75f8060`.
     timeframe/max_assets).
   Consider clarifying in the UI which button does what, or unifying them.
 
+
+## Auditor (docs) 2026-10-25
+- [x] docs/AUDIT_DOCS.md verdict FIX; fixed A-01..A-03, A-05, QA notes, CHANGELOG added. Open: A-04 (wrong file:line refs in REVIEW.md R-02/R-03/R-11/R-18), command->ok list for npm/pip/data_layer quickstart is partial (README documents data layer failure without Redis/Postgres), /llms.txt missing, UI disclaimer missing.

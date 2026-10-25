@@ -8,7 +8,7 @@ A crypto pairs screener for statistical arbitrage. It loads Binance USDT futures
 
 - **Screens** the top Binance USDT futures by volume for pairs with high correlation, Engle-Granger cointegration (tested in both directions, Bonferroni-adjusted), a mean-reversion half-life and an expected net edge after fees, slippage and funding. Formulas: [`docs/RULES.md`](docs/RULES.md).
 - **Monitors** the top daily pairs intraday: re-fits the hedge ratio with a Kalman filter on 5-minute candles and flags unusual z-scores.
-- **Alerts** in-app when a pair's z-score crosses a threshold you set. Alerts are not sent to Telegram or email.
+- **Alerts**: thresholds per pair are stored in the database. Known bug: with the default SQLite database the trigger check reads only in-memory alerts, so stored alerts never fire (docs/QA.md BUG-1). Alerts are never sent to Telegram or email.
 - **Tracks positions** as bookkeeping records (entry prices, quantities, PnL). Nothing is sent to an exchange.
 - **Backtests** a z-score entry/exit strategy on one pair, with transaction costs and rolling hedge ratios.
 - **Calculates** position sizes for a pair (dollar-neutral, equal-dollar and always-long-A or always-long-B).
@@ -116,7 +116,7 @@ The first screening run can take several minutes because it downloads candles fo
 
 ## Configuration
 
-Copy `.env.example` to `backend/.env` (the backend reads `.env` from its working directory). Never commit real values. The names below are exactly the names in `.env.example` and `backend/app/config.py`.
+Copy `.env.example` to `backend/.env` (the backend reads `.env` from its working directory). Never commit real values. The names below match the names in `.env.example` and `backend/app/config.py`.
 
 | Variable | Default | Meaning |
 |---|---|---|
@@ -330,7 +330,7 @@ Production checklist: set `API_KEY` and `REQUIRE_AUTH=true`, set `CORS_ORIGINS` 
 
 ## Known limitations
 
-- **Alerts are in-app only.** `alerts` stores thresholds and records triggers. There is no Telegram, email or webhook delivery.
+- **Alerts are in-app only.** `alerts` stores thresholds (see the BUG-1 note above: triggers are not evaluated for database-stored alerts). There is no Telegram, email or webhook delivery.
 - **Live intraday monitor is on demand.** It has no background loop. `POST /api/v1/live/start` is a no-op that returns success. A snapshot is recomputed when someone asks for one.
 - **Live screener loop is not started.** `LiveScreener` contains a 30-minute background loop, but nothing calls its `start()` method. Screening runs only when requested (`/run`, `/run-live`), when the cold-start path triggers in `/status`, or through the cron route.
 - **`DATA_LAYER_URL` is unused.** It is defined in the settings and described in `.env.example` as the source for the live monitor, but no code path reads it. The monitor fetches candles from Binance through ccxt.

@@ -217,3 +217,6 @@ Positions are bookkeeping records only. Nothing is sent to an exchange.
 - Volume SMA, period 20.
 
 The data layer is a separate service (see README, "Market data layer").
+
+
+> Note: `GET /api/v1/screener/pairs/{id}/spread` computes its own `composite_score` with weights 0.5/0.3/0.2 (routes.py), different from the screening score above (audit finding A-05, not unified).

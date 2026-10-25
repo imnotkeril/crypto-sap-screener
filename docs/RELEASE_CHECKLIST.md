@@ -45,7 +45,7 @@ Not in `.env.example` but used by compose/data layer: PORT, DATALAYER_SYMBOLS, D
 - [x] Runbook line "retry/clear failed jobs": in RUNBOOK.md (no queue; re-trigger scan, restart backend if flag stuck).
 
 **notifications**
-- Gap: alerts are in-app only (in-memory `AlertManager`, lost on restart). No Telegram bot, email or web push exists, so bot token, owner chat id, VAPID keys, email domain, privacy-policy mention are N/A until the feature exists. Owner decision needed (N1): add Telegram notifications (z-score threshold + failed/stale scan) or accept in-app only.
+- Gap: alerts are in-app only (stored in the database; trigger evaluation is broken for them, QA.md BUG-1). No Telegram bot, email or web push exists, so bot token, owner chat id, VAPID keys, email domain, privacy-policy mention are N/A until the feature exists. Owner decision needed (N1): add Telegram notifications (z-score threshold + failed/stale scan) or accept in-app only.
 
 ## 5. Observability
 - `/health` (no auth) reports process up + `screener_running` + `pairs_found` only; **no last-successful-scan timestamp**, and it returns "healthy" even on internal exception. Staleness is only visible via authenticated `/api/v1/screener/status` (`last_session.completed_at`, `last_error`). No alert on staleness exists. Product-code change needed (B3), out of scope for this step.

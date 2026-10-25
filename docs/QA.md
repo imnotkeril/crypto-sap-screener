@@ -1,6 +1,6 @@
 # QA report - Statistical Arbitrage Pairs Screener (2026-10-25, branch chore/audit)
 
-Verdict: **RED (conditional)** - 0 failing tests, but 7 open bugs (2 in tier-A-ish alert logic, 1 live-scan overlap) are pinned as strict xfail. Not GREEN until BUG-1, BUG-3, BUG-6 are fixed or consciously accepted.
+Verdict: **RED (conditional)** - 0 failing tests, but open bugs (5 pinned as strict xfail; others documented below). Not GREEN until BUG-1, BUG-3, BUG-6 are fixed or consciously accepted.
 
 ## Risk map
 | Area | Tier | Tests | Result |
@@ -25,7 +25,7 @@ Python: venv2 (scratchpad), `PYTHONIOENCODING=utf-8`, tests run on a temp sqlite
 BEFORE (cd backend && python -m pytest -q):  23 passed, 5 warnings in 16.68s
 AFTER  (cd backend && python -m pytest -q):  88 passed, 5 xfailed in 11.66s   (0 failed, 0 skipped)
 ```
-New: 65 tests in 4 files (+5 strict xfail = open bugs). `tsc --noEmit`, `mypy app`, `next build` were NOT re-run in this pass (frontend/typing outside the scope given).
+New: 65 tests in 4 files (+5 strict xfail = open bugs). `tsc --noEmit`, `mypy app`, `npm run build` (Vite) were NOT re-run in this pass (frontend/typing outside the scope given).
 
 ## Live check (one scan, temp sqlite, port 28481, API_KEY=x, AUTO_SCREEN_ON_COLD_START=false)
 - GET /health 200; GET status/results/stats/trends/export/csv 200 with key; no key 401.

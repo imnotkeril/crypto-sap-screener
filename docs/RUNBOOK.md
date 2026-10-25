@@ -33,7 +33,7 @@ Compose does NOT configure log rotation (default json-file driver grows unbounde
 curl -s -H "X-API-Key: $API_KEY" http://127.0.0.1:8000/api/v1/screener/status
 ```
 Stale = `last_session.completed_at` older than ~2 hours (the in-code interval is 30 min, but see "Scans" - nothing schedules scans by default), or `last_error` non-null, or `last_session` null.
-Data layer: `curl http://127.0.0.1:8001/health`. If it is down the live monitor falls back to direct ccxt/Binance (rate-limit risk).
+Data layer: `curl http://127.0.0.1:8001/health`. The live monitor does not use the data layer (it always calls Binance through ccxt), so a data layer outage does not affect it.
 
 ## Scans: how they run, trigger, retry
 Important: the periodic loop (`LiveScreener.start()`, every 1800 s) is NOT started at app startup. A scan runs only when (a) `GET /status` finds no session ever and `AUTO_SCREEN_ON_COLD_START=true`, (b) someone calls `POST /api/v1/screener/run-live`, or (c) an external scheduler hits the cron endpoint. So with Docker Compose you must add a scheduler (blocker B2).
@@ -71,4 +71,4 @@ gunzip -c backups/datalayer-YYYY-MM-DD.sql.gz | docker compose exec -T postgres 
 Restore NOT yet tested (blocker B5). Schedule daily via cron / Task Scheduler and keep copies off the machine.
 
 ## Notifications
-In-app alerts only (in-memory `AlertManager`, UI). No Telegram/email/push: nobody is notified when a z-score threshold is crossed or when a scan fails. Gap, see RELEASE_CHECKLIST.md B3/N1.
+In-app alerts only (stored in SQLite, but see QA.md BUG-1: triggers are not evaluated for stored alerts). No Telegram/email/push: nobody is notified when a z-score threshold is crossed or when a scan fails. Gap, see RELEASE_CHECKLIST.md B3/N1.
