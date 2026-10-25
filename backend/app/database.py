@@ -1,7 +1,7 @@
 """
 Database connection and session management
 """
-from sqlalchemy import create_engine, Column, Integer, String, Float, DateTime, Enum, JSON, Date, UniqueConstraint, text, ForeignKey
+from sqlalchemy import create_engine, Column, Integer, String, Float, DateTime, JSON, Date, UniqueConstraint, text, ForeignKey
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.engine.url import make_url
@@ -172,6 +172,8 @@ class PairsScreeningResult(Base):
     alpha = Column(Float, nullable=True)  # Intercept
     spread_std = Column(Float)  # σ_ε
     hurst_exponent = Column(Float, nullable=True)
+    half_life = Column(Float, nullable=True)  # mean-reversion half-life in bars
+    expected_net_edge_pct = Column(Float, nullable=True)  # net edge after costs (% of price A)
     screening_date = Column(DateTime, default=datetime.utcnow)
     lookback_days = Column(Integer)
     status = Column(String, default="active")
@@ -317,6 +319,39 @@ class PositionUpdate(Base):
     timestamp = Column(DateTime, default=datetime.utcnow)
 
 
+# Lightweight additive migrations. SQLAlchemy's create_all() only creates
+# missing *tables*, it never ALTERs an existing table to add new columns. When
+# a new nullable Column is added to a model, an already-created DB file would be
+# missing it and every INSERT touching that column would fail. This adds any
+# such columns idempotently (SQLite/Postgres both support ADD COLUMN).
+_EXPECTED_COLUMNS = {
+    "pairs_screening_results": {
+        "half_life": "FLOAT",
+        "expected_net_edge_pct": "FLOAT",
+    },
+}
+
+
+def _ensure_columns():
+    if engine is None:
+        return
+    from sqlalchemy import inspect as sa_inspect
+    try:
+        inspector = sa_inspect(engine)
+        existing_tables = set(inspector.get_table_names())
+        for table, columns in _EXPECTED_COLUMNS.items():
+            if table not in existing_tables:
+                continue  # create_all already made it with all columns
+            present = {c["name"] for c in inspector.get_columns(table)}
+            for col_name, col_type in columns.items():
+                if col_name not in present:
+                    with engine.begin() as conn:
+                        conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {col_name} {col_type}"))
+    except Exception as e:
+        import logging
+        logging.warning(f"Could not apply additive column migrations: {e}")
+
+
 # Create all tables
 def init_db():
     """Initialize database tables"""
@@ -333,6 +368,7 @@ def init_db():
         with engine.connect() as conn:
             conn.execute(text("SELECT 1"))
         Base.metadata.create_all(bind=engine)
+        _ensure_columns()
     except UnicodeDecodeError as e:
         # Handle encoding errors - disable database
         import logging
@@ -364,7 +400,7 @@ def get_db():
             # Use raw connection to avoid encoding issues
             result = db.execute(text("SELECT 1"))
             result.fetchone()
-        except UnicodeDecodeError as encoding_error:
+        except UnicodeDecodeError:
             # Handle encoding errors - disable database permanently
             if not _db_disabled:
                 # Only log once when first detected
@@ -379,7 +415,7 @@ def get_db():
                     pass
             yield None
             return
-        except Exception as test_error:
+        except Exception:
             # If test query fails (e.g., connection refused), that's OK - DB might not be running
             # Silently return None without logging (to avoid spam in logs)
             if db:

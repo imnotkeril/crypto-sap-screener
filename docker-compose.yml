@@ -8,14 +8,17 @@
 #   - Backend API: http://localhost:8000
 #   - Data layer:  http://localhost:8001/health
 #
+# Requires REDIS_PASSWORD, POSTGRES_PASSWORD and API_KEY in .env (see .env.example).
+# All ports are bound to 127.0.0.1; put a TLS reverse proxy in front for public access.
 # Data is persisted in Docker volumes across restarts.
 
 services:
   redis:
     image: redis:7-alpine
     restart: unless-stopped
+    command: ["redis-server", "--requirepass", "${REDIS_PASSWORD:?set REDIS_PASSWORD in .env}"]
     ports:
-      - "6379:6379"
+      - "127.0.0.1:6379:6379"
     volumes:
       - app-redis:/data
 
@@ -24,10 +27,10 @@ services:
     restart: unless-stopped
     environment:
       POSTGRES_USER: datalayer
-      POSTGRES_PASSWORD: datalayer
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
       POSTGRES_DB: datalayer
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     volumes:
       - app-postgres:/var/lib/postgresql/data
 
@@ -40,10 +43,10 @@ services:
     working_dir: /app/backend
     environment:
       PORT: "8001"
-      REDIS_URL: redis://redis:6379
-      DATABASE_URL: postgresql://datalayer:datalayer@postgres:5432/datalayer
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379
+      DATABASE_URL: postgresql://datalayer:${POSTGRES_PASSWORD}@postgres:5432/datalayer
     ports:
-      - "8001:8001"
+      - "127.0.0.1:8001:8001"
     depends_on:
       - redis
       - postgres
@@ -57,11 +60,15 @@ services:
     working_dir: /app/backend
     environment:
       PORT: "8000"
-      REDIS_URL: redis://redis:6379
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379
       DATA_LAYER_URL: http://datalayer:8001
       DATABASE_URL: sqlite:///./data/stat_arb.db
+      API_KEY: ${API_KEY:?set API_KEY in .env}
+      CRON_SECRET: ${CRON_SECRET:-}
+      REQUIRE_AUTH: "true"
+      CORS_ORIGINS: http://localhost:3100,http://127.0.0.1:3100
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8000:8000"
     volumes:
       - app-backend-data:/app/backend/data
     depends_on:
@@ -69,16 +76,14 @@ services:
       - datalayer
 
   frontend:
-    image: node:18-alpine
-    working_dir: /app
-    command: sh -c "npm ci && npm run dev -- --host 0.0.0.0"
+    build:
+      context: ./frontend
+    restart: unless-stopped
     environment:
-      VITE_BACKEND_URL: http://backend:8000
-    volumes:
-      - ./frontend:/app
-      - frontend-node-modules:/app/node_modules
+      BACKEND_URL: http://backend:8000
+      API_KEY: ${API_KEY:?set API_KEY in .env}
     ports:
-      - "3100:5173"
+      - "127.0.0.1:3100:8080"
     depends_on:
       - backend
 
@@ -86,4 +91,3 @@ volumes:
   app-redis:
   app-postgres:
   app-backend-data:
-  frontend-node-modules:

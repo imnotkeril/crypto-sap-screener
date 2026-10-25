@@ -129,7 +129,7 @@ async def run_backtest(request: BacktestRequest, db: Session = Depends(get_db)):
         logger.error(f"Error running backtest: {e}")
         import traceback
         traceback.print_exc()
-        raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.get("/results/{session_id}")
@@ -151,7 +151,7 @@ async def get_backtest_results(session_id: int, db: Session = Depends(get_db)):
         raise
     except Exception as e:
         logger.error(f"Error getting backtest results: {e}")
-        raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.get("/sessions")
@@ -202,5 +202,5 @@ async def get_backtest_sessions(db: Session = Depends(get_db)):
         }
     except Exception as e:
         logger.error(f"Error getting backtest sessions: {e}")
-        raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Internal server error")
 

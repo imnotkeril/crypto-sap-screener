@@ -2,9 +2,7 @@
 History analyzer for pairs trading metrics
 Analyzes changes in pair metrics over time
 """
-from typing import List, Dict, Optional
-from datetime import datetime, timedelta
-import pandas as pd
+from typing import List, Dict
 
 
 class HistoryAnalyzer:

@@ -3,7 +3,6 @@ Data loader for fetching cryptocurrency price data from Binance
 """
 import ccxt
 import pandas as pd
-from datetime import datetime, timedelta
 from typing import Optional, List, Dict
 from sqlalchemy.orm import Session
 from app.database import PriceDataCache
@@ -235,7 +234,12 @@ class DataLoader:
                     # Log request details for debugging
                     if symbol in ['1000SHIB', 'SHIB', 'GALA'] or days > 200:
                         print(f"  DEBUG {symbol}: Requesting {num_candles} {timeframe} candles, since={since} ({(self.exchange.milliseconds() - since) / (24*60*60*1000):.1f} days ago)")
-                    ohlcv = self.exchange.fetch_ohlcv(symbol_pair, timeframe, since=since)
+                    # Explicit limit: without it Binance returns only 500 candles, which made
+                    # 5m/1m lookbacks look like 'insufficient data'.
+                    ohlcv = self.exchange.fetch_ohlcv(
+                        symbol_pair, timeframe, since=since,
+                        limit=min(num_candles + 5, max_candles_per_request)
+                    )
                     if symbol in ['1000SHIB', 'SHIB', 'GALA'] or days > 200:
                         print(f"  DEBUG {symbol}: Received {len(ohlcv) if ohlcv else 0} candles from API")
                 else:
@@ -339,13 +343,13 @@ class DataLoader:
                             )
                             db.merge(price_data)  # Use merge to handle duplicates
                         db.commit()
-                    except Exception as db_error:
+                    except Exception:
                         # Database error is not critical
                         pass
                 
                 return df
                 
-            except ccxt.RateLimitExceeded as e:
+            except ccxt.RateLimitExceeded:
                 if attempt < max_retries - 1:
                     wait_time = retry_delay * (attempt + 1) * 5  # Longer wait for rate limit
                     print(f"Rate limit hit for {symbol}, waiting {wait_time}s before retry...")
@@ -496,7 +500,7 @@ class DataLoader:
                     # Verify we got enough data
                     if bars_received < expected_bars * 0.8:
                         print(f"⚠️  Warning: Only got {bars_received} {timeframe} candles for {symbol}, requested {expected_bars}")
-                        print(f"  → Possible reasons: asset recently listed, API error, or insufficient historical data")
+                        print("  → Possible reasons: asset recently listed, API error, or insufficient historical data")
                         # Cache this to avoid repeated requests
                         self._insufficient_data_symbols[insufficient_key] = bars_received
                         # Still return the data we have (might be useful for some pairs)

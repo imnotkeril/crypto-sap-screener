@@ -69,40 +69,6 @@ const PairsTable: React.FC<PairsTableProps> = ({ pairs }) => {
     setSpreadData(null);
   };
 
-  const handleExportCSV = async () => {
-    try {
-      const response = await api.exportResultsCSV(filteredAndSortedPairs.length);
-      const blob = new Blob([response], { type: 'text/csv' });
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `pairs_screener_${new Date().toISOString().split('T')[0]}.csv`;
-      document.body.appendChild(a);
-      a.click();
-      window.URL.revokeObjectURL(url);
-      document.body.removeChild(a);
-    } catch (error) {
-      console.error('Error exporting CSV:', error);
-    }
-  };
-
-  const handleExportExcel = async () => {
-    try {
-      const response = await api.exportResultsExcel(filteredAndSortedPairs.length);
-      const blob = new Blob([response], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `pairs_screener_${new Date().toISOString().split('T')[0]}.xlsx`;
-      document.body.appendChild(a);
-      a.click();
-      window.URL.revokeObjectURL(url);
-      document.body.removeChild(a);
-    } catch (error) {
-      console.error('Error exporting Excel:', error);
-    }
-  };
-
   const handleSort = (field: SortField) => {
     if (sortField === field) {
       setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
@@ -117,8 +83,8 @@ const PairsTable: React.FC<PairsTableProps> = ({ pairs }) => {
     let filtered = pairs.filter(pair => {
       if (pair.correlation < minCorrelation) return false;
       if (pair.adf_pvalue > maxADFPValue) return false;
-      if (minHurst !== null && (pair.hurst_exponent === null || pair.hurst_exponent < minHurst)) return false;
-      if (maxHurst !== null && (pair.hurst_exponent === null || pair.hurst_exponent > maxHurst)) return false;
+      if (minHurst !== null && (pair.hurst_exponent == null || pair.hurst_exponent < minHurst)) return false;
+      if (maxHurst !== null && (pair.hurst_exponent == null || pair.hurst_exponent > maxHurst)) return false;
       if (minZScore !== null && (pair.current_zscore === null || pair.current_zscore === undefined || pair.current_zscore < minZScore)) return false;
       if (maxZScore !== null && (pair.current_zscore === null || pair.current_zscore === undefined || pair.current_zscore > maxZScore)) return false;
       if (minBeta !== null && pair.beta < minBeta) return false;
@@ -473,6 +439,12 @@ const PairsTable: React.FC<PairsTableProps> = ({ pairs }) => {
                 </div>
               </th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">
+                HL
+              </th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">
+                Net%
+              </th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">
                 Z-Score
               </th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">
@@ -537,6 +509,22 @@ const PairsTable: React.FC<PairsTableProps> = ({ pairs }) => {
                   {pair.hurst_exponent !== null && pair.hurst_exponent !== undefined ? (
                     <span className={pair.hurst_exponent < 0.5 ? 'text-emerald-400' : 'text-gray-400'}>
                       {formatNumber(pair.hurst_exponent)}
+                    </span>
+                  ) : (
+                    <span className="text-gray-600">—</span>
+                  )}
+                </td>
+                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300" title="Mean-reversion half-life (bars)">
+                  {pair.half_life !== null && pair.half_life !== undefined ? (
+                    <span className="text-gray-300">{formatNumber(pair.half_life, 1)}</span>
+                  ) : (
+                    <span className="text-gray-600">—</span>
+                  )}
+                </td>
+                <td className="px-6 py-4 whitespace-nowrap text-sm" title="Expected net edge per round-trip after fees + funding (% of price)">
+                  {pair.expected_net_edge_pct !== null && pair.expected_net_edge_pct !== undefined ? (
+                    <span className={pair.expected_net_edge_pct > 0 ? 'text-emerald-400' : 'text-red-400'}>
+                      {formatNumber(pair.expected_net_edge_pct, 2)}
                     </span>
                   ) : (
                     <span className="text-gray-600">—</span>

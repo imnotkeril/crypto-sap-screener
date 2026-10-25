@@ -2,7 +2,7 @@
 Query API (___DataLayer.md section 10) - historical queries against
 Postgres and current-state lookups against Redis.
 """
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import List, Optional
 
 from app.data_layer.storage.postgres_store import PostgresStore

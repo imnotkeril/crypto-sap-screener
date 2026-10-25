@@ -4,7 +4,6 @@ Configuration settings for the application
 from pydantic_settings import BaseSettings
 from pydantic import field_validator
 from typing import Optional
-import os
 
 class Settings(BaseSettings):
     """Application settings loaded from environment variables"""
@@ -45,6 +44,21 @@ class Settings(BaseSettings):
     INTRADAY_MONITOR_INTERVAL: int = 15  # seconds between live price polls
     INTRADAY_TOP_PAIRS: int = 20  # number of top daily pairs to track live
     INTRADAY_ZSCORE_ALERT_THRESHOLD: float = 2.5  # |z| considered an unusual intraday deviation
+
+    # Intraday Kalman dynamic hedge ratio. The live monitor re-fits beta/alpha
+    # online on intraday candles instead of reusing the stale daily fit.
+    INTRADAY_KALMAN_TIMEFRAME: str = '5m'  # candle timeframe for the live re-fit
+    INTRADAY_KALMAN_LOOKBACK_DAYS: int = 3  # history fed to the filter
+    INTRADAY_KALMAN_DELTA: float = 1e-4  # state transition cov (beta agility)
+    INTRADAY_KALMAN_R: float = 1e-3  # observation noise variance
+
+    # Security
+    API_KEY: Optional[str] = None  # when set, all /api/v1 routes need header X-API-Key
+    CRON_SECRET: Optional[str] = None  # Bearer secret for /screener/cron/run
+    REQUIRE_AUTH: bool = False  # refuse to start without API_KEY (production)
+    CORS_ORIGINS: str = 'http://localhost:5173,http://127.0.0.1:5173,http://localhost:3100'
+
+    AUTO_SCREEN_ON_COLD_START: bool = True  # GET /status starts a scan if none ever ran
 
     # API
     API_V1_PREFIX: str = "/api/v1"

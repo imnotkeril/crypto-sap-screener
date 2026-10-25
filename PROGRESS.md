@@ -4,6 +4,134 @@ Running log of what's been done, why, and what's still pending. Newest entries o
 
 ---
 
+## 2026-06-16
+
+### Done — cointegration methodology fixes (round 1)
+Research-driven correctness pass on the screener's statistics. Sources: statsmodels
+`coint` vs `adfuller` distinction, Engle-Granger/MacKinnon critical values, Hudson &
+Thames on multiple-testing/FDR, OU half-life.
+
+- **`cointegration.py`**:
+  - Replaced manual `adfuller(residuals)` with `statsmodels.tsa.stattools.coint`.
+    The old code ran a plain ADF on *estimated* OLS residuals and used standard
+    Dickey-Fuller p-values — those crit. values are too lenient for residuals and
+    overstate cointegration (false pairs). `coint` applies the proper
+    Engle-Granger / MacKinnon-Phillips-Ouliaris critical values. OLS is still run
+    separately to recover beta/alpha/spread_std. Return tuple unchanged
+    (`adf_statistic`/`adf_pvalue` now carry the EG stat/pvalue).
+  - Added `half_life(spread)` — OU/AR(1) `Δs = θ·s_{t-1}+c`, `HL = -ln2/θ` in bars.
+    Returns None if not mean-reverting (θ≥0).
+  - Added `rolling_zscore(spread, window)` — trailing-window z to avoid the
+    full-sample lookahead of the static z-score.
+- **`screener.py`**:
+  - `_test_pair` now computes `half_life`; `current_zscore` uses the rolling
+    z-score with window = half-life (falls back to static z when no half-life).
+  - Half-life filter (`config.min_half_life` default 1.0, `max_half_life` None).
+  - **FDR (Benjamini-Hochberg)** across candidate p-values (`config.use_fdr`,
+    default True, alpha=`max_adf_pvalue`). N*(N-1)/2 pairs at raw p<0.10 yields
+    hundreds of spurious pairs; BH controls the false-discovery fraction.
+- **Plumbing**: `half_life` added to `ScreeningConfig` (+`min/max_half_life`,
+  `use_fdr`), `PairsScreeningResult` (DB col) + lightweight additive migration
+  `_ensure_columns()` in `database.py` (create_all never ALTERs existing tables),
+  `PairResult` schema, all 3 `PairResult` constructions in `routes.py`, CSV export
+  columns, frontend `api.ts` types, new **HL column** in `PairsTable.tsx`.
+- Smoke-tested on synthetic OU-cointegrated series: beta 1.47 (true 1.5),
+  half-life 6.7 bars (true 6.93), `coint` p≈0; methods verified.
+
+Note: project `.venv` in this checkout was empty — installed numpy/pandas/
+statsmodels/scipy to run the verification.
+
+### Done — Kalman dynamic hedge ratio for live monitor (round 2, item 1)
+- **New `kalman.py`** (`KalmanHedge`): online time-varying hedge ratio. State
+  `[beta, alpha]` random walk, observation `a_t = beta·b_t + alpha`. The Kalman
+  innovation is the spread; `innovation / sqrt(innovation_var)` is a
+  self-normalizing z-score (no separate rolling mean/std). Tunable via `delta`
+  (beta agility) and `r` (obs noise).
+- **`intraday_monitor.py` rewired**: `_update` now re-fits beta/alpha on recent
+  intraday candles (`INTRADAY_KALMAN_TIMEFRAME` default 5m, `_LOOKBACK_DAYS` 3)
+  per top pair via the Kalman filter, instead of applying the stale daily fit to
+  a single live ticker. Removed the `MAX_ZSCORE_DELTA` hack and the now-dead
+  `_fetch_prices*` / httpx code — the hack only existed to hide stale-beta blowups,
+  which dynamic beta fixes at the source. Last candle close ≈ live price.
+- **Config**: `INTRADAY_KALMAN_TIMEFRAME/_LOOKBACK_DAYS/_DELTA/_R`.
+- Smoke-tested: filter tracked a beta drifting 1.2→1.8 (recovered 1.26→1.82),
+  z-scores finite, empty-input guard OK. Snapshot dict shape unchanged, so
+  `LiveMonitor.tsx` needs no change.
+- Cost: fetches intraday candles for top_n pairs per refresh (cached in
+  DataLoader). Heavier than the old single ticker batch; relies on cache.
+
+### Done — Engle-Granger both-direction test (round 2, item 2)
+- **`cointegration.py`**: `engle_granger_test` now runs `coint(a,b)` and
+  `coint(b,a)` and uses the lower p-value as the cointegration decision. EG is
+  direction-sensitive (residual normalized differently each way), so the
+  arbitrary a~b orientation could reject a genuinely cointegrated pair. The
+  hedge ratio (beta/alpha) stays canonical a~b for the downstream spread.
+- Smoke-tested: picks min(p_ab, p_ba); beta recovered 1.285 (true 1.3).
+- Cost: doubles the `coint` calls per pair (the expensive step). Acceptable;
+  revisit if full-universe fine-TF scans get slow.
+
+### Done — cost-aware scoring (round 2, item 3)
+- **Cost model** (`config.py`): `TRADING_TAKER_FEE_BPS` (5), `_SLIPPAGE_BPS` (2),
+  `_FUNDING_BPS_PER_8H` (1), `_ENTRY_ZSCORE` (2.0) — Binance-USDT-M-ish defaults,
+  all overridable.
+- **`screener.py` `_test_pair`**: computes `expected_net_edge_pct` =
+  `entry_z·spread_std%` (gross reversion from |z|=entry to 0) minus
+  `4·(fee+slippage)` (round-trip, 2 legs open+close) minus funding over the
+  holding period (`half_life · bar_hours / 8 · funding_bps`). `bar_hours` from
+  `TIMEFRAME_MS`.
+- **composite_score reweighted** to fold in a net-edge term:
+  `corr·0.4 + adf·0.25 + hurst·0.15 + net_edge·0.2`, where `net_edge` =
+  `clamp(net/gross, 0, 1)`. A statistically perfect pair whose amplitude can't
+  clear costs now loses that 0.2 (caps ~80 instead of 100).
+- **Plumbed** `expected_net_edge_pct` through DB col (+migration), schema,
+  routes (3×), CSV, `api.ts`, and a new **Net%** column (green>0/red≤0) in
+  `PairsTable.tsx`.
+- Integration smoke (monkeypatched data fetch): tiny-amplitude reverter →
+  gross 0.059% < 0.28% cost → net −0.225% → net_edge_score 0 → composite 80
+  (vs 100). Mechanism verified. (Note: existing DB rows keep their old-weight
+  scores until re-screened.)
+
+### Done — universe pre-clustering (round 2, item 4)
+- **`screener.py` `_clustered_pairs`**: when `config.use_clustering` is on,
+  builds a return-correlation matrix over the valid assets, average-linkage
+  hierarchical clustering on `1 - corr` distance, cut at `config.cluster_distance`
+  (default 0.5). Only within-cluster pairs are tested. Falls back to all-pairs on
+  any failure. Cuts tests + false discoveries, focuses on related assets.
+- Config: `use_clustering` (default False), `cluster_distance` (0.5). Echoed in
+  stats. `api.ts` types updated.
+- Smoke: 5 assets in 2 factor-driven groups -> {A,B,C}+{D,E} -> 4 within-cluster
+  pairs vs 10 all-pairs; cross-cluster pairs removed.
+
+### Done — surface controls + cost params per-run (round 2, item 5)
+- **Cost params moved into `ScreeningConfig`** (`taker_fee_bps`, `slippage_bps`,
+  `funding_bps_per_8h`, `entry_zscore`) so they're tunable per run; `_test_pair`
+  reads them from config. Removed the now-dead `TRADING_*` block from
+  `config.py` and the unused `settings` import in `screener.py`.
+- **`ScreenerSettings.tsx`**: new "Methodology & costs" section — min/max
+  half-life, FDR toggle, clustering toggle + distance slider, and the 4 cost
+  inputs (entry z, fee, slippage, funding) with a net-edge formula note.
+
+### Pending — methodology round 2 (remaining)
+- (none — items 1-5 done. Future: walk-forward / out-of-sample beta stability,
+  Johansen for >2-asset baskets, live cost feed for funding instead of a constant.)
+
+### Done — Docker deploy + verify
+- `docker compose build backend datalayer` + `up -d` (full stack: redis,
+  postgres, datalayer, backend, frontend). No Dockerfile/requirements change
+  needed — FDR uses `statsmodels.stats.multitest`, Kalman is pure numpy,
+  clustering uses scipy (already pinned).
+- Verified live: backend `/health` → healthy (45 pairs); startup clean (no
+  tracebacks); additive migration ran — `PRAGMA table_info` in the container DB
+  confirms `half_life` and `expected_net_edge_pct` columns both present.
+- Stack: http://localhost:3100 (frontend), :8000 (backend), :8001 (datalayer).
+
+### Env note
+- This checkout's `.venv` was empty; over this session installed the declared
+  deps to run verification: numpy, pandas, statsmodels, scipy, ccxt, sqlalchemy,
+  pydantic, pydantic-settings. (Full set still in `backend/requirements.txt`.)
+
+---
+
 ## 2026-06-15
 
 ### Done

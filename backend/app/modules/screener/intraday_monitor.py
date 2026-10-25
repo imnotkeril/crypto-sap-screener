@@ -13,12 +13,15 @@ snapshot is recomputed synchronously on each request. History for sparklines
 is persisted to the database (table `intraday_snapshots`).
 """
 import logging
+import threading
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional
 
-import httpx
+import numpy as np
+import pandas as pd
 
 from app.modules.screener.data_loader import DataLoader
+from app.modules.screener.kalman import KalmanHedge
 from app.modules.screener.live_screener import get_live_screener
 from app.database import SessionLocal, IntradaySnapshot
 from app.config import settings
@@ -27,11 +30,8 @@ logger = logging.getLogger(__name__)
 
 HISTORY_LEN = 240  # samples kept per pair for sparkline/history
 
-# If the live z-score has drifted this many std-devs away from the daily-fit
-# z-score, the daily hedge ratio/spread stats no longer describe the current
-# relationship (stale fit, price-scale mismatch, etc.) - exclude the pair
-# rather than showing a meaningless "extreme" reading.
-MAX_ZSCORE_DELTA = 5.0
+# Minimum aligned intraday candles before the Kalman fit is trustworthy.
+MIN_KALMAN_BARS = 60
 
 
 def _pair_key(asset_a: str, asset_b: str) -> str:
@@ -46,9 +46,18 @@ class IntradayMonitor:
         self.top_n = settings.INTRADAY_TOP_PAIRS
         self.alert_threshold = settings.INTRADAY_ZSCORE_ALERT_THRESHOLD
 
+        self.kalman_timeframe = settings.INTRADAY_KALMAN_TIMEFRAME
+        self.kalman_days = settings.INTRADAY_KALMAN_LOOKBACK_DAYS
+        self.kalman = KalmanHedge(
+            delta=settings.INTRADAY_KALMAN_DELTA,
+            r=settings.INTRADAY_KALMAN_R,
+        )
+
         self.snapshot: List[Dict] = []
         self.last_update: Optional[datetime] = None
         self.last_error: Optional[str] = None
+        self.skipped_pairs = 0
+        self._lock = threading.Lock()
 
         self.data_loader = DataLoader()
 
@@ -65,12 +74,18 @@ class IntradayMonitor:
         pass
 
     def get_snapshot(self) -> Dict:
-        try:
-            self._update()
-            self.last_error = None
-        except Exception as e:
-            logger.error(f"Intraday monitor error: {e}")
-            self.last_error = str(e)
+        with self._lock:
+            fresh = (
+                self.last_update is not None
+                and (datetime.utcnow() - self.last_update).total_seconds() < self.interval
+            )
+            if not fresh:
+                try:
+                    self._update()
+                    self.last_error = None
+                except Exception as e:
+                    logger.error(f"Intraday monitor error: {e}")
+                    self.last_error = "Live update failed; see server logs"
 
         return {
             'pairs': [p.copy() for p in self.snapshot],
@@ -79,6 +94,7 @@ class IntradayMonitor:
             'interval_seconds': self.interval,
             'alert_threshold': self.alert_threshold,
             'last_error': self.last_error,
+            'skipped_pairs': self.skipped_pairs,
         }
 
     def get_history(self, asset_a: str, asset_b: str) -> List[Dict]:
@@ -109,6 +125,15 @@ class IntradayMonitor:
             except Exception:
                 pass
 
+    def _recent_prices(self, asset: str, fetched: Dict[str, pd.Series]) -> pd.Series:
+        """Fresh intraday closes (bypasses the screener's long-lived price cache)."""
+        if asset not in fetched:
+            df = self.data_loader.fetch_ohlcv(
+                asset, days=self.kalman_days, timeframe=self.kalman_timeframe
+            )
+            fetched[asset] = df['close'] if df is not None and not df.empty else pd.Series(dtype=float)
+        return fetched[asset]
+
     def _update(self):
         live = get_live_screener()
         daily_results = live.get_results()
@@ -121,50 +146,52 @@ class IntradayMonitor:
             reverse=True
         )[:self.top_n]
 
-        symbols = set()
-        for r in candidates:
-            symbols.add(r['asset_a'])
-            symbols.add(r['asset_b'])
-
-        prices = self._fetch_prices(symbols)
-        if not prices:
-            return
-
         now = datetime.utcnow()
         snapshot = []
         db_rows = []
+        fetched: Dict[str, pd.Series] = {}
+        skipped = 0
 
         for r in candidates:
             a, b = r['asset_a'], r['asset_b']
-            pa, pb = prices.get(a), prices.get(b)
-            if pa is None or pb is None:
+
+            # Re-fit the hedge ratio on recent intraday candles rather than
+            # reusing the (possibly stale) daily fit. The last candle close is
+            # effectively the live price (ccxt returns the forming candle).
+            try:
+                price_a = self._recent_prices(a, fetched)
+                price_b = self._recent_prices(b, fetched)
+            except Exception as e:
+                logger.warning(f"Intraday monitor: candle fetch failed for {a}/{b}: {e}")
+                skipped += 1
                 continue
 
-            alpha = r.get('alpha', 0.0) or 0.0
-            beta = float(r['beta'])
-            mean_spread = r.get('mean_spread', 0.0) or 0.0
-            std = r.get('spread_std') or 1.0
+            aligned = pd.DataFrame({'a': price_a, 'b': price_b}).dropna()
+            if len(aligned) < MIN_KALMAN_BARS:
+                skipped += 1
+                continue
 
-            spread_now = float(pa - (alpha + beta * pb))
-            zscore = float((spread_now - mean_spread) / std) if std else 0.0
+            kf = self.kalman.run(aligned['a'], aligned['b'])
+            if kf.empty:
+                continue
+
+            last = kf.iloc[-1]
+            beta = float(last['beta'])
+            spread_now = float(last['spread'])
+            zscore = float(last['zscore'])
+            if not np.isfinite(zscore) or not np.isfinite(beta):
+                continue
+
+            pa = float(aligned['a'].iloc[-1])
+            pb = float(aligned['b'].iloc[-1])
             daily_zscore = float(r.get('current_zscore', 0.0) or 0.0)
-
-            # If live re-pricing has blown the z-score wildly off from the
-            # daily fit, the fit is stale rather than the spread being a real
-            # "extreme" trade - drop it rather than show garbage numbers.
-            if abs(zscore - daily_zscore) > MAX_ZSCORE_DELTA:
-                logger.debug(
-                    f"Intraday monitor: dropping {a}/{b}, live z={zscore:.2f} vs "
-                    f"daily z={daily_zscore:.2f} (stale fit)"
-                )
-                continue
 
             entry = {
                 'pair_id': r.get('id'),
                 'asset_a': a,
                 'asset_b': b,
-                'price_a': float(pa),
-                'price_b': float(pb),
+                'price_a': pa,
+                'price_b': pb,
                 'beta': beta,
                 'spread': spread_now,
                 'zscore': zscore,
@@ -189,6 +216,7 @@ class IntradayMonitor:
 
         snapshot.sort(key=lambda x: abs(x['zscore']), reverse=True)
         self.snapshot = snapshot
+        self.skipped_pairs = skipped
         self.last_update = now
 
         self._persist_snapshots(db_rows, now)
@@ -213,48 +241,6 @@ class IntradayMonitor:
                 db.close()
             except Exception:
                 pass
-
-    def _fetch_prices(self, symbols) -> Dict[str, float]:
-        """Fetch last traded prices for a set of base symbols."""
-        if settings.DATA_LAYER_URL:
-            prices = self._fetch_prices_from_data_layer(symbols)
-            if prices:
-                return prices
-
-        return self._fetch_prices_from_exchange(symbols)
-
-    def _fetch_prices_from_data_layer(self, symbols) -> Dict[str, float]:
-        """Fetch real-time prices from the Market Data Layer's ticker cache."""
-        prices: Dict[str, float] = {}
-        try:
-            with httpx.Client(base_url=settings.DATA_LAYER_URL, timeout=3.0) as client:
-                for base in symbols:
-                    resp = client.get("/ticker", params={"symbol": f"{base}/USDT"})
-                    if resp.status_code != 200:
-                        continue
-                    last = resp.json().get("last")
-                    if last:
-                        prices[base] = float(last)
-        except Exception as e:
-            logger.warning(f"Intraday monitor: data layer price fetch failed: {e}")
-            return {}
-        return prices
-
-    def _fetch_prices_from_exchange(self, symbols) -> Dict[str, float]:
-        """Fetch last traded prices for a set of base symbols via Binance tickers."""
-        exchange = self.data_loader.exchange
-        prices: Dict[str, float] = {}
-        try:
-            market_symbols = [f"{s}/USDT" for s in symbols]
-            tickers = exchange.fetch_tickers(market_symbols)
-            for sym, ticker in tickers.items():
-                base = sym.split('/')[0]
-                last = ticker.get('last') or ticker.get('close')
-                if last:
-                    prices[base] = float(last)
-        except Exception as e:
-            logger.warning(f"Intraday monitor: failed to fetch live prices: {e}")
-        return prices
 
 
 _intraday_monitor: Optional[IntradayMonitor] = None

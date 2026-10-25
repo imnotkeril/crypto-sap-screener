@@ -1,44 +1,16 @@
-FROM node:18-alpine AS builder
-
+FROM node:22-alpine AS builder
 WORKDIR /app
-
-# Copy package files
 COPY package*.json ./
 RUN npm ci
-
-# Copy source files
 COPY . .
-
-# Build with environment variable
-# Railway automatically makes env vars available during build
-ENV VITE_API_URL=${VITE_API_URL:-}
+# Same-origin API: nginx below proxies /api to the backend and injects the API key.
 RUN npm run build
 
-# Production stage
-FROM nginx:alpine
-
-# Copy built files
+FROM nginxinc/nginx-unprivileged:alpine
+ENV PORT=8080 \
+    BACKEND_URL=http://backend:8000 \
+    API_KEY=
+COPY nginx.conf.template /etc/nginx/templates/default.conf.template
 COPY --from=builder /app/dist /usr/share/nginx/html
-
-# Remove default nginx config
-RUN rm -f /etc/nginx/conf.d/default.conf
-
-# Create nginx config template
-RUN echo 'server { \
-    listen ${PORT}; \
-    server_name _; \
-    root /usr/share/nginx/html; \
-    index index.html; \
-    location / { \
-        try_files $uri $uri/ /index.html; \
-    } \
-}' > /etc/nginx/templates/default.conf.template
-
-# Copy and make start script executable
-COPY start-nginx.sh /start-nginx.sh
-RUN chmod +x /start-nginx.sh
-
-# Override ENTRYPOINT to use our custom script
-# Railway automatically sets PORT env var (e.g., 8080)
-ENTRYPOINT []
-CMD ["/start-nginx.sh"]
+EXPOSE 8080
+HEALTHCHECK --interval=30s --timeout=3s CMD wget -qO- http://127.0.0.1:${PORT}/ >/dev/null || exit 1

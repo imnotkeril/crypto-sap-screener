@@ -2,7 +2,7 @@
 Position calculator for pairs trading
 Calculates position sizes based on beta (hedge ratio) and capital
 """
-from typing import Dict, Literal
+from typing import Dict
 from enum import Enum
 
 
