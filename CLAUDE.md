@@ -1,5 +1,7 @@
 # Statistical Arbitrage Pairs Screener
 
+Router: finance/screener
+
 Crypto pairs screener (family: finance / screener). FastAPI + SQLAlchemy (SQLite default) backend in `backend/`, React + Vite + TS frontend in `frontend/`, optional market data layer in `backend/app/data_layer/`.
 
 ## Commands

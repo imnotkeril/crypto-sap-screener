@@ -9,5 +9,8 @@
 - [x] T7 beta/Hurst regression (log prices) + tests
 - [x] T8 live monitor fix
 - [x] T9 tests: net-edge, FDR, Kalman, API smoke
-- [x] T10 tsc/mypy/ruff clean, bundle code-split
+- [~] T10 tsc 0, ruff F clean, bundle split; mypy NOT clean (77/102)
 - [x] T11 README/.env.example/docs, audit "After fixes"
+- [x] T12 framework docs: REVIEW/QA/SECURITY/RUNBOOK/RELEASE_CHECKLIST/RULES + README rewrite (agents: reviewer, qa-tester, security-reviewer, devops, tech-writer)
+- [ ] T13 fix REVIEW.md P1 findings (R-01..R-10)
+- [ ] T14 fix SECURITY.md findings; scheduler + /health last-scan (RELEASE_CHECKLIST B2/B3)

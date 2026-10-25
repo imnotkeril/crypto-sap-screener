@@ -45,3 +45,6 @@ debug.log
 .env
 .env.local
 data/
+
+# Claude tooling (junctions to coding-brain skills)
+.claude/
