@@ -9,5 +9,5 @@
 - [x] T7 beta/Hurst regression (log prices) + tests
 - [x] T8 live monitor fix
 - [x] T9 tests: net-edge, FDR, Kalman, API smoke
-- [ ] T10 tsc/mypy/ruff clean, bundle code-split
-- [ ] T11 README/.env.example/docs, audit "After fixes"
+- [x] T10 tsc/mypy/ruff clean, bundle code-split
+- [x] T11 README/.env.example/docs, audit "After fixes"
