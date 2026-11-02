@@ -16,6 +16,17 @@ A crypto pairs screener for statistical arbitrage. It loads Binance USDT futures
 
 Included but separate: a **market data layer** (`backend/app/data_layer`), a standalone service that streams Binance prices into Redis and PostgreSQL. The screener does not depend on it (see [Known limitations](#known-limitations)).
 
+## Screenshots
+
+Taken on a local stack with real Binance data (1d scan, 1035 pairs tested, 3 found).
+
+| | |
+|---|---|
+| ![Screener results](docs/img/screener.png) | ![Pair details](docs/img/pair-details.png) |
+| Screener: ranked pairs, correlation matrix | Pair details: z-score, beta, Hurst, spread stats |
+| ![Live monitor](docs/img/live-monitor.png) | ![Backtest](docs/img/backtest-results.png) |
+| Live monitor: intraday z-score with Kalman hedge | Backtest of a z-score strategy on one pair |
+
 ## Stack
 
 - Backend: Python 3.11, FastAPI, SQLAlchemy 2 (SQLite by default), pandas, numpy, statsmodels, scipy, ccxt, Pydantic Settings.
@@ -329,6 +340,21 @@ Production checklist: set `API_KEY` and `REQUIRE_AUTH=true`, set `CORS_ORIGINS` 
 - `/docs` on a running backend: interactive OpenAPI documentation.
 
 ## Known limitations
+
+**Status: not release-ready.** The independent review ([`docs/REVIEW.md`](docs/REVIEW.md)) found no P0 but 10 open P1 issues; none is fixed yet:
+
+1. R-01: the still-forming last candle is used for `current_zscore` and alerts.
+2. R-02: rolling z-score with a short half-life window is capped (about 1.8 at 5 bars), so |z| never reaches 2.
+3. R-03: Kalman z-score depends on the price level (fixed noise parameters).
+4. R-04: UI settings (FDR, half-life, clustering, costs) are not sent to `/run`.
+5. R-05: alerts are keyed by `pair_id`, which is the rank in a scan, so they point at another pair after the next scan.
+6. R-06: if the first scan fails, every `/status` poll starts another full scan (exchange ban risk).
+7. R-07: backtester falls back to the full-sample beta when the rolling beta is above 10 (look-ahead).
+8. R-08: backtester z-stop is inverted for long spreads.
+9. R-09: backtester fills at the same close that produced the signal.
+10. R-10: the price cache has no TTL.
+
+Other known gaps:
 
 - **Alerts are in-app only.** `alerts` stores thresholds (see the BUG-1 note above: triggers are not evaluated for database-stored alerts). There is no Telegram, email or webhook delivery.
 - **Live intraday monitor is on demand.** It has no background loop. `POST /api/v1/live/start` is a no-op that returns success. A snapshot is recomputed when someone asks for one.
