@@ -309,6 +309,10 @@ class DataLoader:
                     if len(ohlcv) > num_candles:
                         ohlcv = ohlcv[-num_candles:]
 
+                # Drop the still-forming candle: its close is not final (lookahead/flicker).
+                now_ms = self.exchange.milliseconds()
+                ohlcv = [c for c in (ohlcv or []) if c[0] + candle_ms <= now_ms]
+
                 if not ohlcv:
                     return pd.DataFrame()
 
