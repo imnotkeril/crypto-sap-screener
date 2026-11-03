@@ -26,7 +26,7 @@ Bring the crypto stat-arb pairs screener (FastAPI + React, finance/screener rout
 3. REVIEW P2 R-11..R-20 (BH over all tested pairs and expose q-value, net-edge std, composite renormalise, monitor closed candle, timeframe in spread/backtest, restore all DB columns, test gaps, print/except debt, mypy).
 4. Release: B9 docker clean build + E2E smoke, B10 live monitor recheck on real Binance (use_fdr=false), design-reviewer gate (375/768/1440), remove stale deploy files after the host is chosen.
 
-## Open questions (owner)
+## Open questions
 - Secrets: API_KEY, CRON_SECRET, REDIS_PASSWORD, POSTGRES_PASSWORD (.env, never in chat).
 - Deploy target (VPS compose default), domain/TLS, CORS_ORIGINS.
 - Alerts channel: Telegram/email or in-app only.
