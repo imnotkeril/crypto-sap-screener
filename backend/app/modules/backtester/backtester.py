@@ -133,7 +133,7 @@ class Backtester:
         spread_atr = calculate_atr(global_spread, period=14) if strategy.stop_loss_type == 'atr' or strategy.take_profit_type == 'atr' else None
         
         # Helper function to calculate rolling beta/alpha
-        def calculate_rolling_beta_alpha(current_index: int, rolling_window: int = 90) -> Tuple[float, float]:
+        def calculate_rolling_beta_alpha(current_index: int, rolling_window: int = 90) -> Optional[Tuple[float, float]]:
             """
             Calculate rolling beta and alpha using historical data up to current index
             
@@ -142,7 +142,8 @@ class Backtester:
                 rolling_window: Number of days to look back (default: 90)
                 
             Returns:
-                Tuple of (beta, alpha)
+                Tuple of (beta, alpha), or None when the trailing window is too short or the
+                fit is unusable. Never falls back to the full-sample fit (it includes the future).
             """
             # Use rolling window or available data, but need at least 30 days
             start_idx = max(0, current_index - rolling_window)
@@ -150,13 +151,13 @@ class Backtester:
             
             if end_idx - start_idx < 30:
                 # Not enough data, use global beta/alpha
-                return beta, alpha
+                return None
             
             # Get historical data up to (but not including) current date
             historical_data = aligned.iloc[start_idx:end_idx]
             
             if len(historical_data) < 30:
-                return beta, alpha
+                return None
             
             try:
                 X = historical_data['b'].values.reshape(-1, 1)
@@ -167,14 +168,14 @@ class Backtester:
                 rolling_beta = float(model.params[1])
                 rolling_alpha = float(model.params[0])
                 
-                # Validate beta (should be positive and reasonable)
-                if rolling_beta <= 0 or rolling_beta > 10:
-                    return beta, alpha
+                # Beta is a price-unit ratio (can legitimately be >> 10); only sign/finiteness matter.
+                if not np.isfinite(rolling_beta) or not np.isfinite(rolling_alpha) or rolling_beta <= 0:
+                    return None
                 
                 return rolling_beta, rolling_alpha
             except Exception:
                 # If calculation fails, use global beta/alpha
-                return beta, alpha
+                return None
         
         # Execute trades - generate signals dynamically on each step
         trades = []
@@ -182,6 +183,8 @@ class Backtester:
         rolling_zscore_list = []  # Store rolling z-scores for chart
         rolling_dates_list = []   # Store corresponding dates
         current_position = None
+        pending_signal = None  # signal waiting for the next bar's fill
+        pending_z = None
         entry_price_a = None
         entry_price_b = None
         entry_zscore = None
@@ -207,7 +210,11 @@ class Backtester:
             current_alpha_for_signal = alpha
             
             # Calculate rolling beta/alpha
-            current_beta_for_signal, current_alpha_for_signal = calculate_rolling_beta_alpha(i, rolling_window=90)
+            rolling_fit = calculate_rolling_beta_alpha(i, rolling_window=90)
+            if rolling_fit is None:
+                equity_curve.append(capital)
+                continue
+            current_beta_for_signal, current_alpha_for_signal = rolling_fit
             
             # Calculate rolling z-score with window of 60 days
             spread_window = min(60, i + 1)  # Include current date
@@ -262,7 +269,7 @@ class Backtester:
                     # 1. Sufficient time has passed since last rebalance
                     # 2. Beta has drifted beyond threshold
                     if days_since_last_rebalance >= strategy.rebalancing_frequency_days:
-                        current_beta_check, current_alpha_check = calculate_rolling_beta_alpha(i, rolling_window=90)
+                        current_beta_check, current_alpha_check = rolling_fit
                         beta_drift_pct = abs(current_beta_check - entry_beta) / entry_beta if entry_beta > 0 else 0
                         
                         if beta_drift_pct >= strategy.rebalancing_threshold:
@@ -322,7 +329,7 @@ class Backtester:
                 if strategy.stop_loss is not None:
                     if strategy.stop_loss_type == 'percent' and current_pnl_pct <= -strategy.stop_loss:
                         signal = TradeSignal.CLOSE_LONG
-                    elif strategy.stop_loss_type == 'zscore' and zscore_val >= strategy.stop_loss:
+                    elif strategy.stop_loss_type == 'zscore' and zscore_val <= -strategy.stop_loss:
                         signal = TradeSignal.CLOSE_LONG
                     elif strategy.stop_loss_type == 'atr' and current_atr is not None:
                         spread_change = abs(spread_val - entry_spread)
@@ -369,7 +376,7 @@ class Backtester:
                     # 1. Sufficient time has passed since last rebalance
                     # 2. Beta has drifted beyond threshold
                     if days_since_last_rebalance >= strategy.rebalancing_frequency_days:
-                        current_beta_check, current_alpha_check = calculate_rolling_beta_alpha(i, rolling_window=90)
+                        current_beta_check, current_alpha_check = rolling_fit
                         beta_drift_pct = abs(current_beta_check - entry_beta) / entry_beta if entry_beta > 0 else 0
                         
                         if beta_drift_pct >= strategy.rebalancing_threshold:
@@ -429,7 +436,7 @@ class Backtester:
                 if strategy.stop_loss is not None:
                     if strategy.stop_loss_type == 'percent' and current_pnl_pct <= -strategy.stop_loss:
                         signal = TradeSignal.CLOSE_SHORT
-                    elif strategy.stop_loss_type == 'zscore' and zscore_val <= -strategy.stop_loss:
+                    elif strategy.stop_loss_type == 'zscore' and zscore_val >= strategy.stop_loss:
                         signal = TradeSignal.CLOSE_SHORT
                     elif strategy.stop_loss_type == 'atr' and current_atr is not None:
                         spread_change = abs(spread_val - entry_spread)
@@ -461,6 +468,17 @@ class Backtester:
                 else:
                     signal = TradeSignal.HOLD
             
+            # Next-bar fill (R-09): a signal decided on the close of bar i is executed at the
+            # close of bar i+1, never at the same close it was computed from.
+            reason_z = zscore_val  # z that triggered the signal (for exit-reason labelling)
+            if pending_signal is not None:
+                signal, reason_z = pending_signal, pending_z
+                pending_signal = None
+            elif signal is not None and signal != TradeSignal.HOLD:
+                pending_signal, pending_z = signal, zscore_val
+                equity_curve.append(capital)
+                continue
+
             # Execute trade based on signal
             if signal == TradeSignal.HOLD or signal is None:
                 equity_curve.append(capital)
@@ -472,7 +490,7 @@ class Backtester:
                 if current_position is None:
                     # Calculate rolling beta/alpha for position sizing
                     # Use historical data up to current date (not including current date)
-                    current_beta, current_alpha = calculate_rolling_beta_alpha(i, rolling_window=90)
+                    current_beta, current_alpha = rolling_fit
                     
                     # Calculate position sizes (dollar neutral with beta hedge)
                     # Use fixed position size based on INITIAL capital to avoid compounding issues
@@ -539,7 +557,7 @@ class Backtester:
                 if current_position is None:
                     # Calculate rolling beta/alpha for position sizing
                     # Use historical data up to current date (not including current date)
-                    current_beta, current_alpha = calculate_rolling_beta_alpha(i, rolling_window=90)
+                    current_beta, current_alpha = rolling_fit
                     
                     # Calculate position sizes (dollar neutral with beta hedge)
                     # For SHORT_SPREAD: Short $X in Asset A, Long $X*beta in Asset B
@@ -635,7 +653,7 @@ class Backtester:
                             theoretical_pnl_from_spread = -spread_change * last_trade['quantity_a']
                         
                         # Check if beta has drifted (calculate current beta at exit)
-                        current_beta_at_exit, current_alpha_at_exit = calculate_rolling_beta_alpha(i, rolling_window=90)
+                        current_beta_at_exit, current_alpha_at_exit = rolling_fit
                         beta_drift = abs(current_beta_at_exit - entry_beta) / entry_beta if entry_beta > 0 else 0
                         
                         # Diagnostic: Check if P&L direction matches spread change
@@ -674,10 +692,10 @@ class Backtester:
                                 exit_reason = 'stop_loss'
                                 exit_reason_detail = f'Stop loss (percent): {pnl_pct:.2f}% <= -{strategy.stop_loss}%'
                             elif strategy.stop_loss_type == 'zscore':
-                                if (current_position == 'long' and zscore_val >= strategy.stop_loss) or \
-                                   (current_position == 'short' and zscore_val <= -strategy.stop_loss):
+                                if (current_position == 'long' and reason_z <= -strategy.stop_loss) or \
+                                   (current_position == 'short' and reason_z >= strategy.stop_loss):
                                     exit_reason = 'stop_loss'
-                                    exit_reason_detail = f'Stop loss (z-score): {zscore_val:.2f}'
+                                    exit_reason_detail = f'Stop loss (z-score): {reason_z:.2f}'
                             elif strategy.stop_loss_type == 'atr' and current_atr:
                                 spread_change_atr = abs(spread_val - entry_spread)
                                 if spread_change_atr >= strategy.stop_loss * current_atr:
@@ -691,10 +709,10 @@ class Backtester:
                             elif strategy.take_profit_type == 'zscore':
                                 entry_z_for_tp = float(last_trade.get('entry_zscore', 0.0))
                                 target_z = calc_zscore_take_profit_target(entry_z_for_tp, float(strategy.take_profit))
-                                if (current_position == 'long' and zscore_val >= target_z) or \
-                                   (current_position == 'short' and zscore_val <= target_z):
+                                if (current_position == 'long' and reason_z >= target_z) or \
+                                   (current_position == 'short' and reason_z <= target_z):
                                     exit_reason = 'take_profit'
-                                    exit_reason_detail = f'Take profit (z-score): {zscore_val:.2f} reached target {target_z:.2f}'
+                                    exit_reason_detail = f'Take profit (z-score): {reason_z:.2f} reached target {target_z:.2f}'
                             elif strategy.take_profit_type == 'atr' and current_atr:
                                 if current_position == 'long':
                                     spread_change_tp = spread_val - entry_spread
@@ -713,7 +731,7 @@ class Backtester:
                         expected_profit = (current_position == 'long' and spread_change > 0) or (current_position == 'short' and spread_change < 0)
                         logger.debug(f"TRADE CLOSED ({current_position.upper()}): Entry={last_trade['entry_date']}, Exit={date}, "
                                     f"Days Held={days_held}, Exit Reason={exit_reason} - {exit_reason_detail}, "
-                                    f"Z-Score: {entry_zscore:.4f} → {zscore_val:.4f}, "
+                                    f"Z-Score: {entry_zscore:.4f} → {reason_z:.4f}, "
                                     f"Total P&L: ${total_pnl:.2f} ({(total_pnl / self.initial_capital) * 100:.2f}%), "
                                     f"Beta drift: {beta_drift*100:.2f}%")
                         if abs(total_pnl - theoretical_pnl_from_spread) > 50:  # Significant difference
@@ -724,7 +742,7 @@ class Backtester:
                             'exit_date': date,
                             'exit_price_a': price_a_val,
                             'exit_price_b': price_b_val,
-                            'exit_zscore': zscore_val,
+                            'exit_zscore': reason_z,
                             'exit_reason': exit_reason,
                             'exit_reason_detail': exit_reason_detail,
                             'pnl': total_pnl,
@@ -794,7 +812,8 @@ class Backtester:
                 else:  # short
                     theoretical_pnl_from_spread = -spread_change * last_trade['quantity_a']
                 # Calculate current beta at final date (use last index)
-                current_beta_at_exit, current_alpha_at_exit = calculate_rolling_beta_alpha(len(aligned) - 1, rolling_window=90)
+                current_beta_at_exit, current_alpha_at_exit = (
+                    calculate_rolling_beta_alpha(len(aligned) - 1, rolling_window=90) or (entry_beta, entry_alpha))
                 beta_drift = abs(current_beta_at_exit - entry_beta) / entry_beta if entry_beta > 0 else 0
                 
                 # Decide whether to close position at end of period

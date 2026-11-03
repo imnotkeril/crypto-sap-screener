@@ -101,3 +101,51 @@ def test_backtest_api_rejects_out_of_range_params(client, auth):
                  {"asset_a": "A", "asset_b": "B", "initial_capital": 0},
                  {"asset_a": "A", "asset_b": "B", "stop_loss_type": "bogus"}):
         assert client.post("/api/v1/backtester/run", json=body, headers=auth).status_code == 422
+
+
+# ---- P1 regressions: R-07 (no future beta), R-08 (stop side), R-09 (next-bar fill) ---------------
+def test_no_trades_before_trailing_window_is_available():
+    """R-07: with <30 trailing bars there is no beta; the bar is skipped, not fitted on the future."""
+    r = _run()
+    first = pd.Timestamp(r["trades"][0]["entry_date"])
+    a, _ = _series()
+    assert first > a.index[30]
+
+
+def test_entries_fill_one_bar_after_signal_close():
+    """R-09: entry price is the NEXT bar's close, not the close the z-score was computed on."""
+    a, b = _series()
+    r = _run()
+    t = r["trades"][0]
+    d = pd.Timestamp(t["entry_date"])
+    assert t["entry_price_a"] == pytest.approx(float(a.loc[d]))
+    assert d > a.index[31]
+
+
+def _persistent_run(seed, **strat):
+    """AR(1) spread so z persists across bars (white-noise spreads make next-bar z independent)."""
+    rng = np.random.default_rng(seed)
+    n = 500
+    b = 100 + np.cumsum(rng.normal(size=n))
+    sp = np.zeros(n)
+    for i in range(1, n):
+        sp[i] = 0.93 * sp[i - 1] + rng.normal(scale=1.0)
+    idx = pd.date_range("2024-01-01", periods=n, freq="D")
+    bt = Backtester(10000.0, 0.0)
+    bt.data_loader = DL(pd.Series(2 * b + sp, index=idx), pd.Series(b, index=idx))
+    s = ZScoreStrategy(entry_threshold=2.0, take_profit=0.0, take_profit_type="zscore", **strat)
+    return bt.run_backtest("A", "B", s, lookback_days=n, position_size_pct=100.0)
+
+
+def test_z_stop_triggers_on_adverse_side_only():
+    """R-08: a z-score stop fires when z moves FURTHER against the entry side, never on recovery."""
+    stops = []
+    for seed in range(8):
+        stops += [t for t in _persistent_run(seed, stop_loss=3.0, stop_loss_type="zscore")["trades"]
+                  if t["exit_reason"] == "stop_loss"]
+    assert stops, "expected at least one adverse-move stop on persistent spreads"
+    for t in stops:
+        if t["entry_signal"] == "long_spread":     # entered at z <= -entry; adverse = lower z
+            assert t["exit_zscore"] <= -3.0
+        else:
+            assert t["exit_zscore"] >= 3.0
