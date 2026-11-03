@@ -120,9 +120,6 @@ def test_alert_api_duplicate_create_is_not_deduped(client, auth):
         client.delete(f"/api/v1/alerts/{i}", headers=auth)
 
 
-@pytest.mark.xfail(strict=True, reason="BUG-1: /alerts/triggered/check evaluates the in-memory AlertManager "
-                                       "while CRUD persists to the DB, so API-created alerts never fire "
-                                       "(routes_alerts.py check_triggered_alerts)")
 def test_db_alert_fires_in_triggered_check(client, auth, monkeypatch):
     from app.modules.screener import live_screener as ls
     pid, a, b = _pair()
@@ -358,3 +355,31 @@ def test_run_endpoint_rejects_overlap_with_live_scan(client, auth, monkeypatch):
     body = {"assets": ["BTC", "ETH", "SOL", "BNB", "XRP", "DOGE"], "lookback_days": 60, "max_assets": 10}
     r = client.post("/api/v1/screener/run", json=body, headers=auth)
     assert r.status_code == 400 and started == []
+
+
+def test_alert_matches_by_assets_not_rank(client, auth, monkeypatch):
+    """R-05: after a rescan the rank id changes; the alert must follow (asset_a, asset_b)."""
+    from app.modules.screener import live_screener as ls
+    pid, a, b = _pair()
+    aid = client.post("/api/v1/alerts/", params={"pair_id": pid, "asset_a": a, "asset_b": b},
+                      headers=auth).json()["alert_id"]
+    scr = ls.get_live_screener()
+    monkeypatch.setattr(scr, "current_results", [
+        {"id": pid, "asset_a": "ZZZ", "asset_b": "YYY", "current_zscore": 9.0},   # same rank, other pair
+        {"id": pid + 50, "asset_a": a, "asset_b": b, "current_zscore": 5.0},
+    ])
+    r = client.get("/api/v1/alerts/triggered/check", headers=auth).json()
+    hits = [t for t in r["triggered"] if t["alert_id"] == aid]
+    assert len(hits) == 1 and hits[0]["current_zscore"] == 5.0
+    monkeypatch.setattr(scr, "current_results",
+                        [{"id": pid, "asset_a": "ZZZ", "asset_b": "YYY", "current_zscore": 9.0}])
+    r = client.get("/api/v1/alerts/triggered/check", headers=auth).json()
+    assert aid not in [t["alert_id"] for t in r["triggered"]]
+    client.delete(f"/api/v1/alerts/{aid}", headers=auth)
+
+
+def test_alert_manager_check_assets():
+    m = AlertManager()
+    m.create_alert(3, "A", "B")
+    assert m.check_assets("A", "C", 9) == []
+    assert len(m.check_assets("A", "B", 9)) == 1

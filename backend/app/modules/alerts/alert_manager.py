@@ -248,3 +248,18 @@ class AlertManager:
                     results[pair_id] = triggered
         return results
 
+
+
+    def check_assets(self, asset_a: str, asset_b: str, zscore: float) -> List[Alert]:
+        """Check alerts keyed by the canonical (asset_a, asset_b) pair, not by scan rank."""
+        triggered = []
+        with self._lock:
+            for alert in self._alerts.values():
+                if alert.asset_a == asset_a and alert.asset_b == asset_b and alert.check(zscore):
+                    triggered.append(alert)
+        return triggered
+
+
+def threshold_hit(zscore: float, high: Optional[float], low: Optional[float]) -> bool:
+    """True when zscore crosses either (inclusive) threshold."""
+    return (high is not None and zscore >= high) or (low is not None and zscore <= low)

@@ -8,7 +8,7 @@ from datetime import datetime
 
 from app.database import get_db
 from app.database import Alert as DbAlert
-from app.modules.alerts.alert_manager import AlertManager
+from app.modules.alerts.alert_manager import AlertManager, threshold_hit
 import logging
 
 from app.api.validation import ensure_pair_exists
@@ -212,39 +212,51 @@ async def delete_alert(alert_id: int, db: Session = Depends(get_db)):
 
 
 @router.get("/triggered/check")
-async def check_triggered_alerts():
-    """Check for triggered alerts based on current screening results"""
+async def check_triggered_alerts(db: Session = Depends(get_db)):
+    """Check for triggered alerts based on current screening results.
+
+    Alerts are matched to results by the (asset_a, asset_b) pair; the scan rank
+    `id` is reassigned on every run and must not be used as a key.
+    """
     try:
         from app.modules.screener.live_screener import get_live_screener
-        
-        manager = get_alert_manager()
-        live_screener = get_live_screener()
-        results = live_screener.get_results()
-        
-        # Check all pairs for triggered alerts
-        triggered = manager.check_all_pairs(results)
-        
-        # Format response
-        triggered_list = []
-        for pair_id, alerts in triggered.items():
-            for alert in alerts:
-                triggered_list.append({
-                    'alert_id': alert.alert_id,
-                    'pair_id': pair_id,
-                    'asset_a': alert.asset_a,
-                    'asset_b': alert.asset_b,
-                    'threshold_high': alert.threshold_high,
-                    'threshold_low': alert.threshold_low,
-                    'current_zscore': next((r.get('current_zscore', 0) for r in results if r.get('id') == pair_id), 0),
-                    'last_triggered': alert.last_triggered.isoformat() if alert.last_triggered else None,
-                    'trigger_count': alert.trigger_count
-                })
-        
-        return {
-            'triggered': triggered_list,
-            'count': len(triggered_list)
+
+        results = {
+            (r.get('asset_a'), r.get('asset_b')): r.get('current_zscore')
+            for r in get_live_screener().get_results()
         }
+        triggered_list = []
+
+        def entry(alert_id, pair_id, a, b, high, low, z, last, count):
+            return {
+                'alert_id': alert_id, 'pair_id': pair_id, 'asset_a': a, 'asset_b': b,
+                'threshold_high': high, 'threshold_low': low, 'current_zscore': z,
+                'last_triggered': last.isoformat() if last else None, 'trigger_count': count,
+            }
+
+        if db is not None:
+            now = datetime.utcnow()
+            for row in db.query(DbAlert).filter(DbAlert.enabled == "true").all():
+                z = results.get((row.asset_a, row.asset_b))
+                if z is None or not threshold_hit(z, row.threshold_high, row.threshold_low):
+                    continue
+                row.last_triggered = now
+                row.trigger_count = (row.trigger_count or 0) + 1
+                triggered_list.append(entry(row.id, row.pair_id, row.asset_a, row.asset_b,
+                                            row.threshold_high, row.threshold_low, z,
+                                            row.last_triggered, row.trigger_count))
+            db.commit()
+        else:
+            manager = get_alert_manager()
+            for (a, b), z in results.items():
+                if z is None:
+                    continue
+                for alert in manager.check_assets(a, b, z):
+                    triggered_list.append(entry(alert.alert_id, alert.pair_id, a, b,
+                                                alert.threshold_high, alert.threshold_low, z,
+                                                alert.last_triggered, alert.trigger_count))
+
+        return {'triggered': triggered_list, 'count': len(triggered_list)}
     except Exception as e:
         logger.error(f"Error checking triggered alerts: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
-
