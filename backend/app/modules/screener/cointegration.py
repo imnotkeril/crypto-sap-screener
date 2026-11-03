@@ -219,3 +219,18 @@ class CointegrationTester:
         zscore = (spread_clean - mean_spread) / std_spread
         return zscore
 
+
+
+MIN_ZSCORE_WINDOW = 20
+ZSCORE_HALF_LIFE_MULT = 3
+
+
+def rolling_z_window(half_life: float, n_obs: int) -> int:
+    """Rolling z-score window in bars: ~3 half-lives, never below 20 bars.
+
+    With sample std over w points the last |z| is bounded by (w-1)/sqrt(w), so tiny windows
+    (w=5 -> 1.79) can never reach an entry z of 2 (R-02). Capped at half the sample.
+    """
+    window = int(round(half_life * ZSCORE_HALF_LIFE_MULT))
+    window = max(window, MIN_ZSCORE_WINDOW)
+    return max(2, min(window, max(MIN_ZSCORE_WINDOW, n_obs // 2), n_obs))

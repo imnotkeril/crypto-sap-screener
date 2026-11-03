@@ -9,7 +9,7 @@ import pandas as pd
 import logging
 
 from app.modules.screener.data_loader import DataLoader, bars_for_lookback, TIMEFRAME_MS
-from app.modules.screener.cointegration import CointegrationTester
+from app.modules.screener.cointegration import CointegrationTester, rolling_z_window
 from app.modules.screener.correlation import CorrelationAnalyzer
 from app.modules.screener.hurst import HurstCalculator
 from app.modules.shared.models import ScreeningConfig
@@ -435,7 +435,7 @@ class PairsScreener:
             # at the full-sample mean/std. Fall back to the static z-score when
             # there is no usable half-life.
             if half_life is not None and half_life >= 1:
-                window = int(min(max(half_life, 5), max(5, len(spread) // 2)))
+                window = rolling_z_window(half_life, len(spread))
                 rolling_z = self.cointegration_tester.rolling_zscore(spread, window)
                 current_zscore = float(rolling_z.iloc[-1]) if len(rolling_z) > 0 else 0.0
             else:
