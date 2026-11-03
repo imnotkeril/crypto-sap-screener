@@ -20,6 +20,11 @@ function App() {
     <ErrorBoundary>
       <QueryClientProvider client={queryClient}>
         <ScreenerDashboard />
+        <footer className="px-4 py-4 text-center text-xs text-gray-500">
+          Research and educational tool, not investment advice. Results are statistical and may be
+          affected by survivorship bias (the universe is today&apos;s top-volume listed perpetuals;
+          delisted assets are absent). The app never places orders.
+        </footer>
       </QueryClientProvider>
     </ErrorBoundary>
   );

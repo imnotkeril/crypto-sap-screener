@@ -3,6 +3,8 @@
 A crypto pairs screener for statistical arbitrage. It loads Binance USDT futures prices through [ccxt](https://github.com/ccxt/ccxt), tests pairs of assets for cointegration, ranks them by a composite score that includes expected net edge after costs, and tracks the intraday z-score of the top pairs with a Kalman-filter hedge ratio. Results are shown in a React dashboard and served by a FastAPI API.
 
 > **Disclaimer.** This is a research and educational tool. It is not investment advice. Statistical tests, backtests and simulated results do not guarantee future performance, and trading can lose all capital. The software **never sends orders** to any exchange. It has no order-placement code path and no live trading keys are used.
+>
+> **Survivorship bias.** The universe is today's top-volume listed Binance perpetuals: delisted assets are absent and assets with under 80% of the requested history are dropped, so results look better than a point-in-time universe would.
 
 ## What it does
 
