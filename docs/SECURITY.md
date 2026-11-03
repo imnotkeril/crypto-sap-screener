@@ -9,7 +9,7 @@ Project type: finance/screener, single-user tool, no order placement (`grep crea
 | Severity | Count | IDs |
 |---|---|---|
 | P0 | 0 | - |
-| P1 | 2 | S-01, S-02 |
+| P1 | 1 open (S-01 closed 2026-11-03 for the symbol path; pickle format still in use) | S-02 |
 | P2 | 5 | S-03, S-04, S-05, S-06, S-07 |
 | P3 | 3 | S-08, S-09, S-10 |
 

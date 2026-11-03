@@ -15,14 +15,17 @@ On a rate-limit cut or new session: read this file, then docs/plan.md, continue 
 - [x] T9 core tests
 - [~] T10 tsc 0 errors, ruff F clean, bundle split; mypy errors REMAIN (77 with --ignore-missing-imports, 102 plain `mypy app`) (SQLAlchemy Column typing)
 - [x] review/qa/security/release-prep documents by framework agents - docs/REVIEW.md, QA.md, SECURITY.md, RUNBOOK.md, RELEASE_CHECKLIST.md
+- [x] T13 all 10 review P1 fixed test-first - 2fa5692 6a8d588 6b47b26 0360048 1141ee1 8458801 d21f37d d26f462; backend 121 passed, 4 xfailed
+- [x] release-prep B2/B3/B4/B5 + B7/B8 partly - 59866c7 ae2c2d0 (scheduler, /health age, log rotation, pins, SQLite restore tested, secrets-scan history 0 hits, pip-audit clean, npm audit fix)
+- [x] S-01 path traversal/pickle via symbol closed at API + loader (symbol regex + resolve check); UI disclaimer, survivorship note, llms.txt (R-19)
 - [x] docs - README rewritten from real code (tech-writer), PROGRESS.md merged below
 
 ## Next
-- [ ] REVIEW.md: 10 P1 open (R-01 forming bar, R-02 rolling-z cap at short half-life, R-03 Kalman scale, R-04 UI settings not sent to /run, R-05 alerts keyed by rank id, R-06 cold-start scan storm, R-07/08/09 backtester look-ahead, inverted z-stop, same-bar fill, R-10 price cache without TTL)
-- [ ] SECURITY.md findings (S-01 pickle cache, S-03/S-04) and QA.md BUG-* (5 xfail tests = known bugs)
-- [ ] README gaps found: /llms.txt missing, no LICENSE file, data-layer needs Redis+Postgres, docker-compose.datalayer.yml insecure/stale
-- [ ] scheduler for periodic scans + last-successful-scan in /health (RELEASE_CHECKLIST B2/B3)
-- [ ] mypy debt; live monitor re-check on real Binance with use_fdr=false
+- [ ] SECURITY.md S-02 (nginx injects API_KEY for any client: needs owner decision on auth model), S-03 (X-Forwarded-For/limiter), S-04, S-05 done in compose, S-06, S-07 (vite bump), pickle -> data-only cache (S-01 part 3)
+- [ ] QA.md BUG-3 (alert cooldown), BUG-5 (LiveScreener.start loop), BUG-6 (overlapping scans), BUG-7 (stale feed): 4 strict xfails remain
+- [ ] REVIEW.md P2 (R-11..R-20), design-reviewer gate not run
+- [ ] Release: B1 history purge (owner yes), B6 secrets/domain/TLS/CORS (owner), B8 remove stale deploy files once host chosen, B9 docker clean build + E2E, B10 live monitor recheck on real Binance (use_fdr=false); LICENSE (owner chooses)
+- [ ] mypy debt (81 errors), 4 ruff F841 (pre-existing), react-query v3 -> v5 (5 moderate npm advisories)
 
 ## Needed from owner
 - Values for API_KEY, CRON_SECRET, REDIS_PASSWORD, POSTGRES_PASSWORD (in .env, never committed).
