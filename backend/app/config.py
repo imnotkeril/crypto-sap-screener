@@ -50,7 +50,7 @@ class Settings(BaseSettings):
     INTRADAY_KALMAN_TIMEFRAME: str = '5m'  # candle timeframe for the live re-fit
     INTRADAY_KALMAN_LOOKBACK_DAYS: int = 3  # history fed to the filter
     INTRADAY_KALMAN_DELTA: float = 1e-4  # state transition cov (beta agility)
-    INTRADAY_KALMAN_R: float = 1e-3  # observation noise variance
+    INTRADAY_KALMAN_R: Optional[float] = None  # observation noise variance (relative to price level); None = estimate from warm-up OLS residuals
 
     # Security
     API_KEY: Optional[str] = None  # when set, all /api/v1 routes need header X-API-Key

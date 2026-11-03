@@ -81,7 +81,7 @@ def test_kalman_tracks_drifting_beta():
     b = 100 + np.cumsum(rng.normal(size=n))
     true_beta = np.linspace(1.2, 1.8, n)
     a = true_beta * b + rng.normal(scale=0.2, size=n)
-    out = KalmanHedge().run(pd.Series(a), pd.Series(b))
+    out = KalmanHedge(delta=1e-3).run(pd.Series(a), pd.Series(b))
     assert abs(out["beta"].iloc[-1] - 1.8) < 0.15
     assert np.isfinite(out["zscore"].iloc[-50:]).all()
 

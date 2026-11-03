@@ -18,6 +18,8 @@ Model:
 
 where a_t = price of asset A, b_t = price of asset B.
 """
+from typing import Optional
+
 import numpy as np
 import pandas as pd
 
@@ -27,15 +29,27 @@ class KalmanHedge:
 
     Args:
         delta: Controls the state transition covariance
-            ``Q = delta / (1 - delta) * I``. Larger delta lets beta move faster
+            ``Q = delta / (1 - delta) * I`` (normalised units). Larger delta lets beta move faster
             (more responsive, noisier); smaller delta is smoother/slower.
-        r: Observation noise variance R. Larger r trusts the model over each new
-            price more (smoother spread).
+        r: Observation noise variance R, relative to price level (the filter runs on
+            prices normalised by their first value). Larger r trusts the model over
+            each new price more (smoother spread). None (default) estimates R from the
+            OLS residual variance of the first ``warmup`` normalised observations.
     """
 
-    def __init__(self, delta: float = 1e-4, r: float = 1e-3):
+    def __init__(self, delta: float = 1e-4, r: Optional[float] = None):
         self.delta = delta
         self.r = r
+
+    warmup = 100
+
+    def _estimate_r(self, a: np.ndarray, b: np.ndarray) -> float:
+        m = min(len(a), self.warmup)
+        if m < 3:
+            return 1e-6
+        slope, intercept = np.polyfit(b[:m], a[:m], 1)
+        resid = a[:m] - (slope * b[:m] + intercept)
+        return max(float(np.var(resid)), 1e-10)
 
     def run(self, price_a: pd.Series, price_b: pd.Series) -> pd.DataFrame:
         """Run the filter over aligned price series.
@@ -54,14 +68,24 @@ class KalmanHedge:
         a = aligned['a'].to_numpy(dtype=float)
         b = aligned['b'].to_numpy(dtype=float)
 
+        # Scale invariance (R-03): R and Q are absolute, so run the filter on prices
+        # normalised by their first value (both ~1) and map beta/alpha/spread back to
+        # price units afterwards. z-scores are unitless and unaffected by the mapping.
+        a0 = a[0] if a[0] != 0 else 1.0
+        b0 = b[0] if b[0] != 0 else 1.0
+        a = a / a0
+        b = b / b0
+
         # State x = [beta, alpha]; covariance P.
         x = np.zeros(2)
         # Seed beta with a rough ratio so the filter converges faster than from 0.
         if b[0] != 0:
             x[0] = a[0] / b[0]
         P = np.eye(2) * 1.0
+        R = self.r if self.r is not None else self._estimate_r(a, b)
+        # Q is absolute in normalised units, so it is price-level independent. (Tying Q to R
+        # calibrates z dispersion better but stops beta tracking drift - tested, rejected.)
         Q = (self.delta / (1.0 - self.delta)) * np.eye(2)
-        R = self.r
 
         betas = np.empty(n)
         alphas = np.empty(n)
@@ -90,7 +114,9 @@ class KalmanHedge:
             spreads[t] = e
             zscores[t] = e / np.sqrt(S)
 
+        # Back to price units: a = (a0*beta_n/b0) * b + a0*alpha_n, spread scales with a0.
         return pd.DataFrame(
-            {'beta': betas, 'alpha': alphas, 'spread': spreads, 'zscore': zscores},
+            {'beta': betas * a0 / b0, 'alpha': alphas * a0, 'spread': spreads * a0,
+             'zscore': zscores},
             index=aligned.index,
         )
