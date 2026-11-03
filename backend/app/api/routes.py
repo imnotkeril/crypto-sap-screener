@@ -604,8 +604,8 @@ async def get_pair_spread_data(pair_id: int):
                     rolling_beta = float(model.params[1])
                     rolling_alpha = float(model.params[0])
                     
-                    # Validate beta
-                    if rolling_beta <= 0 or rolling_beta > 10:
+                    # Beta is a price-unit ratio (can be >> 10); only sign/finiteness matter (R-07)
+                    if not np.isfinite(rolling_beta) or rolling_beta <= 0:
                         continue
                     
                     # Calculate rolling z-score using last 60 days with this beta/alpha
