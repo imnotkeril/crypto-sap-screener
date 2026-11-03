@@ -58,6 +58,8 @@ class Settings(BaseSettings):
     REQUIRE_AUTH: bool = False  # refuse to start without API_KEY (production)
     CORS_ORIGINS: str = 'http://localhost:5173,http://127.0.0.1:5173,http://localhost:3100'
 
+    SCAN_SCHEDULER_ENABLED: bool = False  # run a scan every SCAN_INTERVAL_SECONDS in-process
+    SCAN_INTERVAL_SECONDS: int = 1800
     AUTO_SCREEN_ON_COLD_START: bool = True  # GET /status starts a scan if none ever ran
 
     # API

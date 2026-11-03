@@ -32,6 +32,9 @@ class LiveScreener:
             max_assets=settings.SCREENER_MAX_ASSETS
         )
         self._thread: Optional[threading.Thread] = None
+        self._sched_thread: Optional[threading.Thread] = None
+        self._sched_stop = threading.Event()
+        self._last_scheduled_attempt: Optional[datetime] = None
         
         # In-memory storage for results
         self.current_results: List[Dict] = []
@@ -130,6 +133,41 @@ class LiveScreener:
         if self._thread:
             self._thread.join(timeout=5)
     
+    def start_scheduler(self, interval_seconds: Optional[int] = None) -> None:
+        """Run a scan every `interval_seconds` in a daemon thread (B2).
+
+        Independent of start()/is_running (see BUG-5): one attempt per interval, success
+        or failure, so a failing exchange is never hammered.
+        """
+        if self._sched_thread is not None and self._sched_thread.is_alive():
+            return
+        if interval_seconds:
+            self.screening_interval = interval_seconds
+        self._sched_stop.clear()
+        self._sched_thread = threading.Thread(target=self._scheduler_loop, daemon=True)
+        self._sched_thread.start()
+        logger.info(f"Scan scheduler started (every {self.screening_interval}s)")
+
+    def stop_scheduler(self) -> None:
+        self._sched_stop.set()
+
+    def _scheduler_due(self, now: Optional[datetime] = None) -> bool:
+        now = now or datetime.utcnow()
+        for ref in (self.last_screening_time, self._last_scheduled_attempt):
+            if ref is not None and (now - ref).total_seconds() < self.screening_interval:
+                return False
+        return True
+
+    def _scheduler_loop(self) -> None:
+        while not self._sched_stop.is_set():
+            try:
+                if not self.is_running and self._scheduler_due():
+                    self._last_scheduled_attempt = datetime.utcnow()
+                    self._run_screening()
+            except Exception as e:
+                logger.error(f"Scheduler error: {e}")
+            self._sched_stop.wait(60)
+
     def get_results(self) -> List[Dict]:
         """Get current screening results (thread-safe)"""
         with self._lock:
