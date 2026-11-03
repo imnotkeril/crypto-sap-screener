@@ -4,7 +4,8 @@ FastAPI routes for backtesting
 from fastapi import APIRouter, HTTPException, Depends
 from typing import Optional, Literal
 from datetime import datetime
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
+from app.api.schemas import ASSET_SYMBOL_RE
 
 from app.modules.backtester.backtester import Backtester
 from app.modules.backtester.strategy import ZScoreStrategy
@@ -38,6 +39,14 @@ class BacktestRequest(BaseModel):
     enable_rebalancing: bool = Field(default=False, description="Enable dynamic hedge rebalancing")
     rebalancing_frequency_days: int = Field(default=5, ge=1, le=30, description="Minimum days between rebalances")
     rebalancing_threshold: float = Field(default=0.05, ge=0.01, le=0.5, description="Minimum beta drift % to trigger rebalance")
+
+    @field_validator('asset_a', 'asset_b')
+    @classmethod
+    def validate_symbol(cls, v: str) -> str:
+        v = v.strip().upper()
+        if not ASSET_SYMBOL_RE.match(v):
+            raise ValueError("asset symbols must match ^[A-Z0-9]{1,20}$")
+        return v
 
 
 @router.post("/run")

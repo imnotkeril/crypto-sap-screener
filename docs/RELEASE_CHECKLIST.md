@@ -53,15 +53,19 @@ Not in `.env.example` but used by compose/data layer: PORT, DATALAYER_SYMBOLS, D
 - Logging: stdlib loggers, no rotation configured, no structured config; no `error-monitoring` module.
 
 ## 6. Release blockers
-- [ ] B1 Secrets in git history: `backend/data/stat_arb.db` was committed earlier (STATE: owner decision pending on purge). `node scripts/secrets-scan.mjs --project . --history` and `license-check` not yet run in this step (no scripts executed here); required before release. History rewrite needs the user's yes.
-- [ ] B2 No scheduler: add a compose service/host cron/Task Scheduler that calls `/cron/run` every 30 min (or start the loop at app startup). Without it data goes stale after the first scan.
-- [ ] B3 Health endpoint lacks last-successful-scan; add `last_screening_time` / `last_session.completed_at` and a 503 when stale; wire an external uptime check.
-- [ ] B4 Log rotation missing in compose.
-- [ ] B5 Backup/restore commands in RUNBOOK are untested; run once on a copy and record.
+- [~] B1 (scans done 2026-11-03: `secrets-scan --history` 0 hits over 162 tracked files; license-check prod 0 blocked, python licenses NOT-CHECKED; stat_arb.db still in history, purge needs owner yes) Secrets in git history: `backend/data/stat_arb.db` was committed earlier (STATE: owner decision pending on purge). `node scripts/secrets-scan.mjs --project . --history` and `license-check` not yet run in this step (no scripts executed here); required before release. History rewrite needs the user's yes.
+- [x] B2 No scheduler: add a compose service/host cron/Task Scheduler that calls `/cron/run` every 30 min (or start the loop at app startup). Without it data goes stale after the first scan.
+  - DONE 2026-11-03: `SCAN_SCHEDULER_ENABLED`/`SCAN_INTERVAL_SECONDS`; compose sets it true; one attempt per interval (backoff on failure). Test: test_scheduler_health.py.
+- [x] B3 Health endpoint lacks last-successful-scan; add `last_screening_time` / `last_session.completed_at` and a 503 when stale; wire an external uptime check.
+  - DONE 2026-11-03: `/health` returns `last_screening_time`, `last_scan_age_seconds`, 503 `stale` when scheduler on and age > 2x interval.
+- [x] B4 Log rotation missing in compose.
+  - DONE 2026-11-03: json-file driver 10m x 5 on all compose services.
+- [x] B5 Backup/restore commands in RUNBOOK are untested; run once on a copy and record.
+  - DONE 2026-11-03: SQLite backup()+restore executed on a COPY of backend/data/stat_arb.db: integrity_check ok, row counts identical (4 sessions, 15 results, 3345 cache rows). Postgres dump/restore via docker NOT exercised.
 - [ ] B6 Pending decisions from owner: deploy target; domain/TLS; actual values for API_KEY, CRON_SECRET, REDIS_PASSWORD, POSTGRES_PASSWORD; CORS_ORIGINS for the real origin.
-- [ ] B7 Dependency audit from AUDIT_2026-10-24 ("After fixes" section says deps pinned; re-run `pip-audit`, `npm audit --omit=dev` and attach output); mypy 77 errors remain (non-blocking).
-- [ ] B8 Cleanup/deconflict deploy files (datalayer compose insecure defaults, stale RAILWAY_DEPLOYMENT.md, frontend/nixpacks.toml, vercel.json) and pin Docker image versions.
-- [ ] B9 Final clean-install build + tests + E2E smoke output, README quickstart re-run, version/CHANGELOG (no CHANGELOG found).
+- [~] B7 (2026-11-03: pip-audit backend/requirements.txt: no known vulnerabilities; `npm audit fix` cleared the high (follow-redirects), 5 moderate remain in react-query@3 -> broadcast-channel -> rimraf/minimatch (needs react-query major upgrade, build-time glob DoS only); mypy 81 errors) Dependency audit from AUDIT_2026-10-24 ("After fixes" section says deps pinned; re-run `pip-audit`, `npm audit --omit=dev` and attach output); mypy 77 errors remain (non-blocking).
+- [~] B8 (2026-11-03: images pinned redis:7.4-alpine, postgres:15.10-alpine, python:3.11.9-slim; datalayer compose now requires passwords and binds 127.0.0.1; stale docs/files RAILWAY_DEPLOYMENT.md, frontend/nixpacks.toml, vercel.json NOT removed - owner picks host) Cleanup/deconflict deploy files (datalayer compose insecure defaults, stale RAILWAY_DEPLOYMENT.md, frontend/nixpacks.toml, vercel.json) and pin Docker image versions.
+- [~] B9 (2026-11-03: backend 112 passed/4 xfailed, tsc 0, `npm run build` ok, CHANGELOG updated; docker clean build + E2E not run) Final clean-install build + tests + E2E smoke output, README quickstart re-run, version/CHANGELOG (no CHANGELOG found).
 - [ ] B10 Re-check live monitor on real Binance (STATE note).
 
 Non-blockers: notifications gap (N1) if the owner accepts in-app alerts; legal/SEO not applicable (private tool, no public site) unless made public.

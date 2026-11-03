@@ -3,6 +3,7 @@ Data loader for fetching cryptocurrency price data from Binance
 """
 import ccxt
 import pandas as pd
+import re
 from typing import Optional, List, Dict
 from sqlalchemy.orm import Session
 from app.database import PriceDataCache
@@ -10,6 +11,8 @@ from app.config import settings
 import time
 
 # Candle timeframes supported for screening, mapped to their duration in milliseconds
+SYMBOL_RE = re.compile(r"^[A-Za-z0-9]{1,20}$")
+
 TIMEFRAME_MS: Dict[str, int] = {
     '1m': 60 * 1000,
     '5m': 5 * 60 * 1000,
@@ -415,10 +418,15 @@ class DataLoader:
         Returns:
             Series with dates as index and prices as values
         """
+        if not SYMBOL_RE.match(symbol or ""):
+            # symbol becomes a cache filename (path traversal / pickle load): refuse anything odd
+            return pd.Series(dtype=float)
         expected_bars = bars_for_lookback(days, timeframe)
         cache_key = f"{symbol}_{days}" if timeframe == '1d' else f"{symbol}_{timeframe}_{days}"
         cache_file = self._cache_dir / f"{cache_key.replace('/', '_')}.pkl"
         insufficient_key = symbol if timeframe == '1d' else f"{symbol}_{timeframe}"
+        if not cache_file.resolve().is_relative_to(self._cache_dir.resolve()):
+            return pd.Series(dtype=float)
 
         # 0. Quick check: if we know this symbol has insufficient data, return early
         if insufficient_key in self._insufficient_data_symbols:

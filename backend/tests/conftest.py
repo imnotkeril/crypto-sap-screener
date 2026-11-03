@@ -24,3 +24,12 @@ def client():
 @pytest.fixture()
 def auth():
     return {"X-API-Key": "test-key"}
+
+
+@pytest.fixture(autouse=True)
+def _reset_rate_limiters():
+    """Per-test clean sliding windows so request-heavy tests do not trip 429 in a full run."""
+    from app.api import security
+    security.expensive_limit.hits.clear()
+    security.general_limit.hits.clear()
+    yield

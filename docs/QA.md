@@ -1,6 +1,6 @@
 # QA report - Statistical Arbitrage Pairs Screener (2026-10-25, branch chore/audit)
 
-Verdict: **RED (conditional)** - 0 failing tests, but open bugs (5 pinned as strict xfail; others documented below). Not GREEN until BUG-1, BUG-3, BUG-6 are fixed or consciously accepted.
+Verdict: **RED (conditional)** - 0 failing tests, but open bugs (5 pinned as strict xfail; others documented below). (updated 2026-11-03: BUG-1 fixed; 112 passed, 4 xfailed: BUG-3, 5, 6, 7). Not GREEN until BUG-3, BUG-6 are fixed or consciously accepted.
 
 ## Risk map
 | Area | Tier | Tests | Result |
@@ -9,7 +9,7 @@ Verdict: **RED (conditional)** - 0 failing tests, but open bugs (5 pinned as str
 | Position manager + /positions API (CRUD, PnL, validation) | A | test_alerts_positions.py | PASS |
 | Backtester accounting (pnl legs, equity reconciliation, costs) | A/B | test_backtester.py | PASS (BUG-8 pinned) |
 | Backtest metrics (Sharpe, DD, win rate, PF, Kelly, MAE, leverage) | B | test_calculator_metrics.py | PASS |
-| Alerts (manager + API CRUD, dedupe/cooldown) | B | test_alerts_positions.py | PASS + 2 xfail (BUG-1, BUG-3) |
+| Alerts (manager + API CRUD, dedupe/cooldown) | B | test_alerts_positions.py | PASS + 1 xfail (BUG-3) |
 | Auth matrix (none / bad / empty / good key / cron secret) | A | test_alerts_positions.py, test_api_security.py | PASS |
 | Exports csv/excel (golden, filters, empty) | B | test_alerts_positions.py | PASS |
 | Live-screener overlap / failure / degraded-empty run | B | test_alerts_positions.py | PASS + 2 xfail (BUG-5, BUG-6) |
@@ -40,7 +40,7 @@ New: 65 tests in 4 files (+5 strict xfail = open bugs). `tsc --noEmit`, `mypy ap
 ## Bugs
 | ID | Sev | Where | Description | Test |
 |---|---|---|---|---|
-| BUG-1 | high | `backend/app/api/routes_alerts.py` check_triggered_alerts (~L215-245) vs CRUD (L33-150) | CRUD persists alerts to DB, but `/alerts/triggered/check` and `live_screener._run_screening` evaluate only the in-memory `AlertManager`. Alerts created through the API never fire. | xfail test_db_alert_fires_in_triggered_check |
+| BUG-1 | high | `backend/app/api/routes_alerts.py` check_triggered_alerts (~L215-245) vs CRUD (L33-150) | CRUD persists alerts to DB, but `/alerts/triggered/check` and `live_screener._run_screening` evaluate only the in-memory `AlertManager`. Alerts created through the API never fire. | **FIXED** 6b47b26: `/alerts/triggered/check` evaluates DB alerts matched by (asset_a, asset_b); test_db_alert_fires_in_triggered_check now a normal test |
 | BUG-3 | med | `backend/app/modules/alerts/alert_manager.py` Alert.check (L52-68) | No dedupe/cooldown: every check above threshold re-triggers and increments trigger_count (spam if notifications are added). Feature is absent, not partially working. | xfail test_alert_cooldown_dedupes_repeated_checks + current-behaviour test |
 | BUG-4 | low | `routes_alerts.py` create_alert (L58-90) | Identical alert definitions for the same pair accepted repeatedly. | test_alert_api_duplicate_create_is_not_deduped (documents) |
 | BUG-5 | med (latent) | `backend/app/modules/screener/live_screener.py` start() L116-125 vs _run_screening L176-181 | `start()` sets `is_running=True`, the loop thread then calls `_run_screening`, whose guard sees running and skips forever. start() is currently never called (dead path), so only latent. | xfail test_live_screener_start_loop_actually_runs |
