@@ -29,6 +29,22 @@ import pickle
 from pathlib import Path
 
 
+def is_series_fresh(series: pd.Series, timeframe: str, now_ms: Optional[float] = None) -> bool:
+    """True if `series` already contains the latest *closed* candle for `timeframe`.
+
+    Cached prices are otherwise reused forever (R-10); a series whose last bar is older
+    than one full candle behind the last closed bar is stale and must be refetched.
+    """
+    if series is None or len(series) == 0:
+        return False
+    candle_ms = TIMEFRAME_MS.get(timeframe, TIMEFRAME_MS['1d'])
+    now_ms = time.time() * 1000 if now_ms is None else now_ms
+    last_closed_open = (int(now_ms) // candle_ms) * candle_ms - candle_ms
+    last_bar = pd.Timestamp(series.index[-1])
+    last_ms = last_bar.value // 1_000_000 if last_bar.tzinfo is None else last_bar.tz_convert('UTC').value // 1_000_000
+    return last_ms >= last_closed_open
+
+
 class DataLoader:
     """Loads and caches price data from Binance"""
     
@@ -416,9 +432,9 @@ class DataLoader:
         with self._cache_lock:
             if cache_key in self._price_cache:
                 cached_series = self._price_cache[cache_key]
-                if len(cached_series) >= expected_bars * 0.8:  # At least 80% of requested bars
+                if len(cached_series) >= expected_bars * 0.8 and is_series_fresh(cached_series, timeframe):
                     return cached_series.copy()
-                # Remove from cache if insufficient data
+                # Remove from cache if insufficient or stale
                 del self._price_cache[cache_key]
         
         # 2. Get lock for this specific symbol/days to prevent duplicate requests
@@ -433,13 +449,13 @@ class DataLoader:
             with self._cache_lock:
                 if cache_key in self._price_cache:
                     cached_series = self._price_cache[cache_key]
-                    if len(cached_series) >= expected_bars * 0.8:  # At least 80% of requested bars
+                    if len(cached_series) >= expected_bars * 0.8 and is_series_fresh(cached_series, timeframe):
                         return cached_series.copy()
             # Double-check cache after acquiring lock (another thread might have loaded it)
             with self._cache_lock:
                 if cache_key in self._price_cache:
                     cached_series = self._price_cache[cache_key]
-                    if len(cached_series) >= expected_bars * 0.8:
+                    if len(cached_series) >= expected_bars * 0.8 and is_series_fresh(cached_series, timeframe):
                         return cached_series.copy()
 
             # 4. Check file cache (persistent across restarts)
@@ -448,7 +464,7 @@ class DataLoader:
                     with open(cache_file, 'rb') as f:
                         price_series = pickle.load(f)
 
-                    if len(price_series) >= expected_bars * 0.8:
+                    if len(price_series) >= expected_bars * 0.8 and is_series_fresh(price_series, timeframe):
                         # Load into memory cache for faster access
                         with self._cache_lock:
                             self._price_cache[cache_key] = price_series.copy()

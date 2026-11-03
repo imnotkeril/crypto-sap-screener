@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from typing import Optional
 from datetime import datetime
 import io
+import time
 import pandas as pd
 
 from app.database import get_db
@@ -36,6 +37,20 @@ logger = logging.getLogger(__name__)
 
 # Global variable to track running screening
 _screening_in_progress = False
+_last_cold_start_attempt: Optional[float] = None
+COLD_START_BACKOFF_SECONDS = 15 * 60
+
+
+def _cold_start_allowed(now: Optional[float] = None) -> bool:
+    """At most one automatic cold-start scan per COLD_START_BACKOFF_SECONDS."""
+    if _last_cold_start_attempt is None:
+        return True
+    return (now if now is not None else time.monotonic()) - _last_cold_start_attempt >= COLD_START_BACKOFF_SECONDS
+
+
+def _mark_cold_start_attempt() -> None:
+    global _last_cold_start_attempt
+    _last_cold_start_attempt = time.monotonic()
 _last_run_error: Optional[str] = None
 
 
@@ -120,7 +135,11 @@ async def get_screening_status(background_tasks: BackgroundTasks, db: Session = 
         # Cold start: no screening session has ever run (e.g. first deploy,
         # empty database). Kick off a screening run in the background so the
         # UI doesn't stay stuck on "Initializing screener..." forever.
-        if settings.AUTO_SCREEN_ON_COLD_START and last_session is None and not status['is_running']:
+        # Backoff: a failing scan leaves last_session unset, so without a gate every
+        # /status poll (10 s) would start another scan against a rate-limited exchange.
+        if (settings.AUTO_SCREEN_ON_COLD_START and last_session is None
+                and not status['is_running'] and _cold_start_allowed()):
+            _mark_cold_start_attempt()
             background_tasks.add_task(live_screener._run_screening)
 
         last_session_response = None
