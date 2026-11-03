@@ -216,16 +216,7 @@ async def run_screening(
         raise HTTPException(status_code=400, detail="Screening already in progress")
     
     # Convert to internal config
-    screening_config = ScreeningConfig(
-        assets=config.assets,
-        max_assets=config.max_assets,
-        lookback_days=config.lookback_days,
-        timeframe=config.timeframe,
-        min_correlation=config.min_correlation,
-        max_adf_pvalue=config.max_adf_pvalue,
-        include_hurst=config.include_hurst,
-        min_volume_usd=config.min_volume_usd
-    )
+    screening_config = ScreeningConfig(**config.model_dump())
     
     # Create session info
     session_id = int(datetime.utcnow().timestamp())

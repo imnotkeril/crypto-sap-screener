@@ -18,6 +18,15 @@ class ScreeningConfigRequest(BaseModel):
     max_adf_pvalue: float = Field(default=0.10, ge=0.0, le=1.0)
     include_hurst: bool = False
     min_volume_usd: float = Field(default=1_000_000, ge=0, description="Minimum daily volume in USD")
+    min_half_life: Optional[float] = Field(default=1.0, ge=0, le=10_000)
+    max_half_life: Optional[float] = Field(default=None, ge=0, le=10_000)
+    use_fdr: bool = False
+    use_clustering: bool = False
+    cluster_distance: float = Field(default=0.5, ge=0.0, le=2.0)
+    taker_fee_bps: float = Field(default=5.0, ge=0, le=500)
+    slippage_bps: float = Field(default=2.0, ge=0, le=500)
+    funding_bps_per_8h: float = Field(default=1.0, ge=-100, le=100)
+    entry_zscore: float = Field(default=2.0, ge=0.5, le=10)
 
     @field_validator('timeframe')
     @classmethod
