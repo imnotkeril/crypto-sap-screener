@@ -54,10 +54,21 @@ def test_net_edge_arithmetic():
     cfg = _cfg(taker_fee_bps=5, slippage_bps=2, funding_bps_per_8h=1, entry_zscore=2.0)
     r = s._test_pair("AAA", "BBB", cfg)
     assert r is not None
-    gross = 2.0 * r["spread_std"]
+    # R-12: gross edge scales with the signal (rolling-window) std relative to the full-sample std
+    zero = s._test_pair("AAA", "BBB", _cfg(taker_fee_bps=0, slippage_bps=0, funding_bps_per_8h=0, entry_zscore=2.0))
+    gross = zero["expected_net_edge_pct"]
+    assert 0 < gross <= 2.0 * r["spread_std"] * 3
     fees = 4 * (5 + 2) * 0.01  # 0.28 %
     funding = (r["half_life"] * 24 / 8) * 1 * 0.01
     assert r["expected_net_edge_pct"] == pytest.approx(gross - fees - funding, rel=1e-9)
+
+
+def test_composite_score_comparable_with_and_without_hurst():
+    s = _screener(_universe(0))
+    with_h = s._test_pair("AAA", "BBB", _cfg(include_hurst=True))
+    without = s._test_pair("AAA", "BBB", _cfg(include_hurst=False))
+    assert without["hurst_exponent"] is None
+    assert abs(with_h["composite_score"] - without["composite_score"]) < 25   # not a ~15-point structural gap
 
 
 def test_net_edge_penalises_costs_in_score():

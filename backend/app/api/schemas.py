@@ -58,6 +58,7 @@ class PairResult(BaseModel):
     correlation: float
     adf_pvalue: float
     adf_statistic: float
+    adf_pvalue_fdr: Optional[float] = None
     beta: float
     spread_std: float
     hurst_exponent: Optional[float] = None

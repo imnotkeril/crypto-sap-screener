@@ -5,6 +5,7 @@ from concurrent.futures import ThreadPoolExecutor
 from typing import List, Optional, Dict
 from sqlalchemy.orm import Session
 from datetime import datetime
+import numpy as np
 import pandas as pd
 import logging
 
@@ -168,7 +169,6 @@ class PairsScreener:
         filtered_results = [
             r for r in results
             if r['correlation'] >= config.min_correlation
-            and _half_life_ok(r)
         ]
 
         # Multiple-testing correction. We test ~N*(N-1)/2 pairs, so a raw
@@ -190,7 +190,7 @@ class PairsScreener:
                 for r, pc in zip(filtered_results, pvals_corrected):
                     r['adf_pvalue_fdr'] = float(pc)
                 if config.use_fdr:
-                    kept = [r for r, rej in zip(filtered_results, reject) if rej]
+                    kept = [r for r, rej in zip(filtered_results, reject) if rej and _half_life_ok(r)]
                     logger.info(
                         f"FDR (Benjamini-Hochberg @ alpha={config.max_adf_pvalue}): "
                         f"kept {len(kept)}/{len(filtered_results)} pairs"
@@ -201,7 +201,8 @@ class PairsScreener:
                 logger.warning(f"FDR correction failed, using raw p-values: {e}")
         if not fdr_done:
             filtered_results = [
-                r for r in filtered_results if r['adf_pvalue'] <= config.max_adf_pvalue
+                r for r in filtered_results
+                if r['adf_pvalue'] <= config.max_adf_pvalue and _half_life_ok(r)
             ]
 
         # Sort by combined score (correlation * (1 - adf_pvalue))
@@ -402,8 +403,8 @@ class PairsScreener:
             is_cointegrated, beta, adf_stat, adf_pvalue, spread_std = \
                 self.cointegration_tester.engle_granger_test(price_a, price_b)
             
-            if not is_cointegrated and not config.use_fdr:
-                return None
+            # R-11: keep non-cointegrated pairs too, so the BH family size m is every pair
+            # that passed the correlation screen; the p-value filter is applied after BH.
             
             # Final strict correlation check
             if corr < config.min_correlation:
@@ -416,7 +417,6 @@ class PairsScreener:
                 return None
             
             from statsmodels.regression.linear_model import OLS
-            import numpy as np
             X = aligned['b'].values.reshape(-1, 1)
             y = aligned['a'].values
             X_with_const = np.column_stack([np.ones(len(X)), X])
@@ -465,7 +465,14 @@ class PairsScreener:
             # entry_z * spread_std (%). Costs: 4 taker fills (open+close, 2 legs)
             # plus funding over the holding period (~ half-life).
             entry_z = config.entry_zscore
-            gross_edge_pct = entry_z * spread_std
+            # Gross edge uses the std of the *signal* (rolling window), not the full-sample std (R-12).
+            std_ratio = 1.0
+            if half_life is not None and half_life >= 1:
+                full_std = float(spread.std())
+                sig_std = float(spread.rolling(rolling_z_window(half_life, len(spread))).std().iloc[-1])
+                if full_std > 0 and np.isfinite(sig_std):
+                    std_ratio = sig_std / full_std
+            gross_edge_pct = entry_z * spread_std * std_ratio
             fee_slip_pct = 4.0 * (config.taker_fee_bps + config.slippage_bps) * 0.01
             bar_hours = TIMEFRAME_MS.get(config.timeframe, TIMEFRAME_MS['1d']) / 3_600_000.0
             if half_life is not None and half_life > 0:
@@ -503,12 +510,12 @@ class PairsScreener:
             else:
                 net_edge_score = 0.0
 
-            composite_score = (
-                correlation_score * 0.4
-                + adf_score * 0.25
-                + hurst_score * 0.15
-                + net_edge_score * 0.2
-            ) * 100
+            # Weights are renormalised over the available components so scores are
+            # comparable whether or not Hurst was computed (R-13).
+            parts = [(correlation_score, 0.4), (adf_score, 0.25), (net_edge_score, 0.2)]
+            if result.get('hurst_exponent') is not None:
+                parts.append((hurst_score, 0.15))
+            composite_score = sum(v * w for v, w in parts) / sum(w for _, w in parts) * 100
             result['composite_score'] = composite_score
             
             return result
