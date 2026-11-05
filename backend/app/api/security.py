@@ -57,6 +57,10 @@ class RateLimiter:
         q = self.hits[client]
         while q and now - q[0] > self.window:
             q.popleft()
+        if not q:
+            # drop idle keys so distinct client IPs cannot grow memory without bound
+            self.hits.pop(client, None)
+            q = self.hits[client]
         if len(q) >= self.limit:
             raise HTTPException(status_code=429, detail="Too many requests")
         q.append(now)
