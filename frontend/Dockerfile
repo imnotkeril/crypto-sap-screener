@@ -9,7 +9,8 @@ RUN npm run build
 FROM nginxinc/nginx-unprivileged:alpine
 ENV PORT=8080 \
     BACKEND_URL=http://backend:8000 \
-    API_KEY= \n    FRONTEND_ALLOW_CIDR=127.0.0.1
+    API_KEY= \
+    FRONTEND_ALLOW_CIDR=127.0.0.1
 COPY nginx.conf.template /etc/nginx/templates/default.conf.template
 COPY --from=builder /app/dist /usr/share/nginx/html
 EXPOSE 8080
