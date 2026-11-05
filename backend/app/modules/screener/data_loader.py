@@ -2,6 +2,7 @@
 Data loader for fetching cryptocurrency price data from Binance
 """
 import ccxt
+import logging
 import pandas as pd
 import re
 from typing import Optional, List, Dict
@@ -60,6 +61,9 @@ def is_series_fresh(series: pd.Series, timeframe: str, now_ms: Optional[float] =
     last_bar = pd.Timestamp(series.index[-1])
     last_ms = last_bar.value // 1_000_000 if last_bar.tzinfo is None else last_bar.tz_convert('UTC').value // 1_000_000
     return last_ms >= last_closed_open
+
+
+logger = logging.getLogger(__name__)
 
 
 class DataLoader:
@@ -265,16 +269,12 @@ class DataLoader:
                     # Single request
                     since = self.exchange.milliseconds() - (num_candles * candle_ms)
                     # Log request details for debugging
-                    if symbol in ['1000SHIB', 'SHIB', 'GALA'] or days > 200:
-                        print(f"  DEBUG {symbol}: Requesting {num_candles} {timeframe} candles, since={since} ({(self.exchange.milliseconds() - since) / (24*60*60*1000):.1f} days ago)")
                     # Explicit limit: without it Binance returns only 500 candles, which made
                     # 5m/1m lookbacks look like 'insufficient data'.
                     ohlcv = self.exchange.fetch_ohlcv(
                         symbol_pair, timeframe, since=since,
                         limit=min(num_candles + 5, max_candles_per_request)
                     )
-                    if symbol in ['1000SHIB', 'SHIB', 'GALA'] or days > 200:
-                        print(f"  DEBUG {symbol}: Received {len(ohlcv) if ohlcv else 0} candles from API")
                 else:
                     # Multiple requests needed for > 1000 candles
                     # Binance returns data from 'since' to now, max 1000 candles
@@ -300,7 +300,7 @@ class DataLoader:
                                 limit=max_candles_per_request
                             )
                         except Exception as e:
-                            print(f"Error fetching batch {batch_num + 1}/{batches_needed} for {symbol}: {e}")
+                            logger.info(f"Error fetching batch {batch_num + 1}/{batches_needed} for {symbol}: {e}")
                             break
 
                         if not batch_ohlcv:
@@ -355,15 +355,10 @@ class DataLoader:
                 df = df[['open', 'high', 'low', 'close', 'volume']]
 
                 # Log date range for debugging
-                if symbol in ['1000SHIB', 'SHIB', 'GALA'] or days > 200:
-                    if len(df) > 0:
-                        print(f"  DEBUG {symbol}: Data range: {df.index[0]} to {df.index[-1]} ({len(df)} candles)")
 
                 # Ensure we have exactly 'num_candles' candles (most recent)
                 if len(df) > num_candles:
                     df = df.tail(num_candles)
-                    if symbol in ['1000SHIB', 'SHIB', 'GALA'] or days > 200:
-                        print(f"  DEBUG {symbol}: Trimmed to {len(df)} candles (most recent {num_candles})")
 
                 # Cache in database (daily candles only - PriceDataCache is keyed by date)
                 if db and timeframe == '1d':
@@ -389,31 +384,31 @@ class DataLoader:
             except ccxt.RateLimitExceeded:
                 if attempt < max_retries - 1:
                     wait_time = retry_delay * (attempt + 1) * 5  # Longer wait for rate limit
-                    print(f"Rate limit hit for {symbol}, waiting {wait_time}s before retry...")
+                    logger.info(f"Rate limit hit for {symbol}, waiting {wait_time}s before retry...")
                     time.sleep(wait_time)
                 else:
-                    print(f"Rate limit exceeded for {symbol} after {max_retries} attempts. IP may be temporarily banned.")
+                    logger.info(f"Rate limit exceeded for {symbol} after {max_retries} attempts. IP may be temporarily banned.")
                     return pd.DataFrame()
             except Exception as e:
                 error_msg = str(e)
                 # Check for geographic restriction (451) - don't retry
                 if '451' in error_msg or 'restricted location' in error_msg.lower() or 'Eligibility' in error_msg:
                     if attempt == 0:  # Only print once
-                        print(f"⚠️  Binance API unavailable from your location (geographic restriction). Cannot fetch data for {symbol}.")
+                        logger.info(f"⚠️  Binance API unavailable from your location (geographic restriction). Cannot fetch data for {symbol}.")
                     return pd.DataFrame()  # Don't retry for geographic restrictions
                 # Check if it's a rate limit error (418 or -1003) or IP ban
                 elif '418' in error_msg or '-1003' in error_msg or 'rate limit' in error_msg.lower() or 'banned' in error_msg.lower():
                     if attempt < max_retries - 1:
                         wait_time = retry_delay * (attempt + 1) * 10  # Much longer wait for IP ban
-                        print(f"Rate limit/IP ban error for {symbol}, waiting {wait_time}s before retry...")
+                        logger.info(f"Rate limit/IP ban error for {symbol}, waiting {wait_time}s before retry...")
                         time.sleep(wait_time)
                     else:
-                        print(f"Rate limit/IP ban exceeded for {symbol} after {max_retries} attempts. Please wait before trying again.")
+                        logger.info(f"Rate limit/IP ban exceeded for {symbol} after {max_retries} attempts. Please wait before trying again.")
                         return pd.DataFrame()
                 else:
                     # Only print error once per symbol to avoid log spam
                     if symbol not in self._failed_symbols:
-                        print(f"Error fetching data for {symbol}: {e}")
+                        logger.info(f"Error fetching data for {symbol}: {e}")
                         self._failed_symbols.add(symbol)
                     return pd.DataFrame()
         
@@ -516,17 +511,17 @@ class DataLoader:
                 
                 try:
                     # Log the request
-                    print(f"Fetching {bars_for_lookback(days, timeframe)} {timeframe} candles ({days} days) for {symbol}...")
+                    logger.info(f"Fetching {bars_for_lookback(days, timeframe)} {timeframe} candles ({days} days) for {symbol}...")
                     df = self.fetch_ohlcv(symbol, days, db, timeframe=timeframe)
                     self._last_request_time = time.time()
                     
                     if df.empty:
-                        print(f"⚠️  Warning: No data returned from API for {symbol}")
+                        logger.info(f"⚠️  Warning: No data returned from API for {symbol}")
                         # Try to return from file cache even if API failed
                         if cache_file.exists():
                             try:
                                 price_series = load_series_file(cache_file)
-                                print(f"  → Using cached data for {symbol}: {len(price_series)} days (requested {days})")
+                                logger.info(f"  → Using cached data for {symbol}: {len(price_series)} days (requested {days})")
                                 return price_series
                             except Exception:
                                 pass
@@ -539,15 +534,15 @@ class DataLoader:
 
                     # Verify we got enough data
                     if bars_received < expected_bars * 0.8:
-                        print(f"⚠️  Warning: Only got {bars_received} {timeframe} candles for {symbol}, requested {expected_bars}")
-                        print("  → Possible reasons: asset recently listed, API error, or insufficient historical data")
+                        logger.info(f"⚠️  Warning: Only got {bars_received} {timeframe} candles for {symbol}, requested {expected_bars}")
+                        logger.info("  → Possible reasons: asset recently listed, API error, or insufficient historical data")
                         # Cache this to avoid repeated requests
                         self._insufficient_data_symbols[insufficient_key] = bars_received
                         # Still return the data we have (might be useful for some pairs)
                     elif bars_received < expected_bars:
-                        print(f"  ✓ Got {bars_received} {timeframe} candles for {symbol} (requested {expected_bars}, missing {expected_bars - bars_received})")
+                        logger.info(f"  ✓ Got {bars_received} {timeframe} candles for {symbol} (requested {expected_bars}, missing {expected_bars - bars_received})")
                     else:
-                        print(f"  ✓ Successfully fetched {bars_received} {timeframe} candles for {symbol}")
+                        logger.info(f"  ✓ Successfully fetched {bars_received} {timeframe} candles for {symbol}")
                     
                     # 6. Save to file cache (persistent)
                     try:
@@ -567,12 +562,12 @@ class DataLoader:
                     
                     return price_series
                 except Exception as e:
-                    print(f"Error loading price series for {symbol}: {e}")
+                    logger.info(f"Error loading price series for {symbol}: {e}")
                     # Try to return from file cache even if API failed
                     if cache_file.exists():
                         try:
                             price_series = load_series_file(cache_file)
-                            print(f"Using cached data for {symbol}: {len(price_series)} days (requested {days})")
+                            logger.info(f"Using cached data for {symbol}: {len(price_series)} days (requested {days})")
                             return price_series
                         except Exception:
                             pass
@@ -581,7 +576,7 @@ class DataLoader:
                     with self._cache_lock:
                         if cache_key in self._price_cache:
                             cached = self._price_cache[cache_key].copy()
-                            print(f"Using in-memory cache for {symbol}: {len(cached)} days (requested {days})")
+                            logger.info(f"Using in-memory cache for {symbol}: {len(cached)} days (requested {days})")
                             return cached
                     
                     return pd.Series(dtype=float)

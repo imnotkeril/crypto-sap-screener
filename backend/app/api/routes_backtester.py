@@ -96,7 +96,7 @@ async def run_backtest(request: BacktestRequest, db: Session = Depends(get_db)):
                         found.extend(_has_timestamp(item, f"{path}[{i}]"))
                     return found
                 return []
-            timestamp_paths = _has_timestamp(results)
+            _has_timestamp(results)
             
             row = DbBacktestSession(
                 asset_a=request.asset_a,

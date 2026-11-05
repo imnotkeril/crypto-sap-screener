@@ -728,7 +728,6 @@ class Backtester:
                         
                         # LONG profits when spread increases (spread_change > 0)
                         # SHORT profits when spread decreases (spread_change < 0)
-                        expected_profit = (current_position == 'long' and spread_change > 0) or (current_position == 'short' and spread_change < 0)
                         logger.debug(f"TRADE CLOSED ({current_position.upper()}): Entry={last_trade['entry_date']}, Exit={date}, "
                                     f"Days Held={days_held}, Exit Reason={exit_reason} - {exit_reason_detail}, "
                                     f"Z-Score: {entry_zscore:.4f} → {reason_z:.4f}, "
@@ -991,7 +990,6 @@ class Backtester:
                 return obj
         
         # Convert rolling z-score to pandas Series for chart
-        rolling_zscore_series = pd.Series(rolling_zscore_list, index=rolling_dates_list)
         
         results = {
             'asset_a': asset_a,
