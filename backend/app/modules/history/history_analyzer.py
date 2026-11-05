@@ -96,7 +96,7 @@ class HistoryAnalyzer:
         # Sort by timestamp
         sorted_history = sorted(results_history, key=lambda x: x.get('timestamp', ''))
         
-        trends = {
+        trends: dict = {
             'total_pairs_trend': [],
             'avg_correlation_trend': [],
             'pairs_count_by_time': []

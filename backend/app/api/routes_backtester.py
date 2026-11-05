@@ -2,7 +2,7 @@
 FastAPI routes for backtesting
 """
 from fastapi import APIRouter, HTTPException, Depends
-from typing import Optional, Literal
+from typing import Any, Optional, Literal
 from datetime import datetime
 from pydantic import BaseModel, Field, field_validator
 from app.api.schemas import ASSET_SYMBOL_RE
@@ -18,7 +18,7 @@ router = APIRouter()
 logger = logging.getLogger(__name__)
 
 # In-memory storage for backtest sessions (since we're not using DB)
-_backtest_sessions = {}
+_backtest_sessions: dict = {}
 _next_session_id = 1
 
 
@@ -171,7 +171,7 @@ async def get_backtest_sessions(db: Session = Depends(get_db)):
             rows = db.query(DbBacktestSession).order_by(DbBacktestSession.created_at.desc()).all()
             sessions = []
             for s in rows:
-                req = s.request or {}
+                req: Any = s.request or {}
                 sessions.append({
                     "id": s.id,
                     "asset_a": s.asset_a,
@@ -184,7 +184,7 @@ async def get_backtest_sessions(db: Session = Depends(get_db)):
                     "take_profit_type": req.get("take_profit_type"),
                     "initial_capital": s.initial_capital,
                     "created_at": s.created_at.isoformat() if s.created_at else None,
-                    "metrics": (s.results or {}).get("metrics", {}),
+                    "metrics": (s.results or {}).get("metrics", {}),  # type: ignore[call-overload]
                 })
             return {"sessions": sessions, "total": len(sessions)}
 

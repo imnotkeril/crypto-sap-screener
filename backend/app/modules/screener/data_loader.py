@@ -279,7 +279,7 @@ class DataLoader:
                     # Multiple requests needed for > 1000 candles
                     # Binance returns data from 'since' to now, max 1000 candles
                     # Strategy: fetch batches going backwards in time
-                    all_ohlcv = []
+                    all_ohlcv: list = []
                     now_ms = self.exchange.milliseconds()
                     batches_needed = (num_candles + 999) // 1000  # Round up
 

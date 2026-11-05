@@ -2,7 +2,7 @@
 Database connection and session management
 """
 from sqlalchemy import create_engine, Column, Integer, String, Float, DateTime, JSON, Date, UniqueConstraint, text, ForeignKey
-from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import DeclarativeBase
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.engine.url import make_url
 from datetime import datetime
@@ -123,7 +123,7 @@ except UnicodeDecodeError as e:
     import logging
     logging.error(f"Unicode decode error creating database engine: {e}")
     if hasattr(e, 'start'):
-        logging.error(f"Error at position {e.start}, object: {e.object if hasattr(e, 'object') else 'N/A'}")
+        logging.error(f"Error at position {e.start}, object: {getattr(e, 'object', 'N/A')!r}")
     engine = None
     SessionLocal = None
     _db_disabled = True
@@ -135,7 +135,10 @@ except Exception as e:
     engine = None
     SessionLocal = None
 
-Base = declarative_base()
+
+class Base(DeclarativeBase):
+    pass
+
 
 
 class PairStatus(str, enum.Enum):

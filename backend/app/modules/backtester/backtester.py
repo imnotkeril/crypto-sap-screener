@@ -1,7 +1,7 @@
 """
 Main backtester for pairs trading strategies
 """
-from typing import Dict, Optional, Tuple
+from typing import Any, Dict, Optional, Tuple
 from datetime import datetime
 import pandas as pd
 import numpy as np
@@ -178,19 +178,19 @@ class Backtester:
                 return None
         
         # Execute trades - generate signals dynamically on each step
-        trades = []
+        trades: list = []
         equity_curve = []
         rolling_zscore_list = []  # Store rolling z-scores for chart
         rolling_dates_list = []   # Store corresponding dates
         current_position = None
         pending_signal = None  # signal waiting for the next bar's fill
-        pending_z = None
-        entry_price_a = None
-        entry_price_b = None
-        entry_zscore = None
-        entry_spread = None
-        entry_beta = None
-        entry_alpha = None
+        pending_z: Any = None
+        entry_price_a: Any = None
+        entry_price_b: Any = None
+        entry_zscore: Any = None
+        entry_spread: Any = None
+        entry_beta: Any = None
+        entry_alpha: Any = None
         max_adverse_excursion = 0.0  # Track maximum drawdown during position holding
         capital = self.initial_capital
         total_rebalancing_costs = 0.0  # Track total costs from rebalancing
@@ -917,7 +917,7 @@ class Backtester:
         total_rebalances = sum(len(t.get('rebalances', [])) for t in trades)
         avg_rebalances_per_trade = total_rebalances / max(1, len([t for t in trades if 'exit_date' in t]))
         
-        metrics = {
+        metrics: Dict[str, Any] = {
             'total_trades': len([t for t in trades if 'exit_date' in t]),
             'win_rate': win_rate,
             'total_return': total_return,
