@@ -20,7 +20,7 @@ from typing import Dict, List, Optional
 import numpy as np
 import pandas as pd
 
-from app.modules.screener.data_loader import DataLoader
+from app.modules.screener.data_loader import DataLoader, TIMEFRAME_MS
 from app.modules.screener.kalman import KalmanHedge
 from app.modules.screener.live_screener import get_live_screener
 from app.database import SessionLocal, IntradaySnapshot
@@ -168,6 +168,14 @@ class IntradayMonitor:
 
             aligned = pd.DataFrame({'a': price_a, 'b': price_b}).dropna()
             if len(aligned) < MIN_KALMAN_BARS:
+                skipped += 1
+                continue
+
+            # Stale feed guard (BUG-7): last closed candle must be recent for this timeframe.
+            candle_ms = TIMEFRAME_MS.get(self.kalman_timeframe, TIMEFRAME_MS['5m'])
+            age_s = (now - aligned.index[-1].to_pydatetime().replace(tzinfo=None)).total_seconds()
+            if age_s > 3 * candle_ms / 1000:
+                logger.warning(f"Intraday monitor: stale candles for {a}/{b} (age {age_s:.0f}s)")
                 skipped += 1
                 continue
 

@@ -32,6 +32,7 @@ class LiveScreener:
             max_assets=settings.SCREENER_MAX_ASSETS
         )
         self._thread: Optional[threading.Thread] = None
+        self._loop_active = False
         self._sched_thread: Optional[threading.Thread] = None
         self._sched_stop = threading.Event()
         self._last_scheduled_attempt: Optional[datetime] = None
@@ -119,17 +120,19 @@ class LiveScreener:
     
     def start(self):
         """Start the live screener"""
-        if self.is_running:
+        if self._loop_active:
             return
         
-        self.is_running = True
+        # Loop flag is separate from is_running (= a scan in progress), otherwise the
+        # scan guard skips every cycle (BUG-5).
+        self._loop_active = True
         self._thread = threading.Thread(target=self._run_loop, daemon=True)
         self._thread.start()
         logger.info("Live screener started (running without database)")
     
     def stop(self):
         """Stop the live screener"""
-        self.is_running = False
+        self._loop_active = False
         if self._thread:
             self._thread.join(timeout=5)
     
@@ -204,7 +207,7 @@ class LiveScreener:
         self._run_screening()
         
         # Then run periodically
-        while self.is_running:
+        while self._loop_active:
             try:
                 # Check if we need to run screening
                 if self._should_run_screening():

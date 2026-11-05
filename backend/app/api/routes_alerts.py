@@ -8,7 +8,7 @@ from datetime import datetime
 
 from app.database import get_db
 from app.database import Alert as DbAlert
-from app.modules.alerts.alert_manager import AlertManager, threshold_hit
+from app.modules.alerts.alert_manager import AlertManager, threshold_hit, in_cooldown
 import logging
 
 from app.api.validation import ensure_pair_exists
@@ -238,7 +238,9 @@ async def check_triggered_alerts(db: Session = Depends(get_db)):
             now = datetime.utcnow()
             for row in db.query(DbAlert).filter(DbAlert.enabled == "true").all():
                 z = results.get((row.asset_a, row.asset_b))
-                if z is None or not threshold_hit(z, row.threshold_high, row.threshold_low):
+                if z is None or in_cooldown(row.last_triggered, now):
+                    continue
+                if not threshold_hit(z, row.threshold_high, row.threshold_low):
                     continue
                 row.last_triggered = now
                 row.trigger_count = (row.trigger_count or 0) + 1

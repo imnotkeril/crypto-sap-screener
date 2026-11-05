@@ -32,4 +32,6 @@ def _reset_rate_limiters():
     from app.api import security
     security.expensive_limit.hits.clear()
     security.general_limit.hits.clear()
+    from app.api import routes
+    routes._screening_in_progress = False
     yield

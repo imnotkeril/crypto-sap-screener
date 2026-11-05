@@ -19,8 +19,9 @@ def _frame(start, n=864, seed=0):
 
 
 class Loader:
-    def __init__(self, start="2026-01-01", mode="ok"):
-        self.start, self.mode = start, mode
+    def __init__(self, start=None, mode="ok"):
+        self.start = start or (pd.Timestamp.now("UTC").tz_localize(None).floor("5min") - pd.Timedelta(minutes=5 * 863))
+        self.mode = mode
 
     def fetch_ohlcv(self, asset, days=1, db=None, timeframe="5m"):
         if self.mode == "raise":
@@ -76,9 +77,6 @@ def test_no_daily_results_returns_empty_without_marking_fresh(monkeypatch):
     assert s["pairs"] == [] and s["last_update"] is None
 
 
-@pytest.mark.xfail(strict=True, reason="BUG-7: monitor never checks candle timestamps; a feed whose last candle is "
-                                       "months old yields a snapshot stamped updated_at=now with is_unusual "
-                                       "signals (intraday_monitor.py _update, ~line 160-200)")
 def test_stale_candles_are_rejected(mon):
     mon.data_loader = Loader(start="2026-01-01")   # last candle ~3 days after 2026-01-01, today is 2026-10-25
     s = mon.get_snapshot()

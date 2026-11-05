@@ -2,8 +2,16 @@
 Alert manager for monitoring Z-Score thresholds
 """
 from typing import Dict, List, Optional
-from datetime import datetime
+from datetime import datetime, timedelta
 import threading
+
+
+ALERT_COOLDOWN_SECONDS = 900  # re-fire at most once per 15 min while the threshold stays crossed
+
+
+def in_cooldown(last_triggered: Optional[datetime], now: Optional[datetime] = None) -> bool:
+    now = now or datetime.utcnow()
+    return last_triggered is not None and now - last_triggered < timedelta(seconds=ALERT_COOLDOWN_SECONDS)
 
 
 class Alert:
@@ -52,7 +60,7 @@ class Alert:
         Returns:
             True if alert should trigger
         """
-        if not self.enabled:
+        if not self.enabled or in_cooldown(self.last_triggered):
             return False
         
         triggered = False

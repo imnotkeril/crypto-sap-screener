@@ -231,8 +231,9 @@ async def run_screening(
     """Start a new screening session (runs in memory)"""
     global _screening_in_progress
     
-    if _screening_in_progress:
+    if _screening_in_progress or get_live_screener().get_status()['is_running']:
         raise HTTPException(status_code=400, detail="Screening already in progress")
+    _screening_in_progress = True  # claimed synchronously; released by the background task
     
     # Convert to internal config
     screening_config = ScreeningConfig(**config.model_dump())

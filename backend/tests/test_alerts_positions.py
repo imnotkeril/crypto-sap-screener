@@ -1,6 +1,6 @@
 """Alert/position managers + API CRUD, auth matrix, exports, live-screener overlap.
 
-xfail(strict=True) tests document OPEN BUGS (see docs/QA.md); they flip to XPASS->fail once fixed,
+xfail(strict=True) tests document OPEN BUGS (none left as of 2026-11-05; see docs/QA.md); they flip to XPASS->fail once fixed,
 forcing the marker to be removed.
 """
 import io
@@ -15,13 +15,16 @@ from app.modules.positions.position_manager import PositionManager
 
 # ---- AlertManager (in-memory) ---------------------------------------------------
 def test_alert_default_thresholds_and_trigger_boundaries():
-    m = AlertManager()
-    a = m.create_alert(1, "A", "B")
+    def fires(z):
+        m = AlertManager()          # fresh manager: no cooldown carry-over
+        m.create_alert(1, "A", "B")
+        return len(m.check_pair(1, z))
+    a = AlertManager().create_alert(1, "A", "B")
     assert (a.threshold_high, a.threshold_low) == (2.0, -2.0)
-    assert m.check_pair(1, 1.99) == [] and m.check_pair(1, -1.99) == []
-    assert len(m.check_pair(1, 2.0)) == 1      # >= inclusive
-    assert len(m.check_pair(1, -2.0)) == 1     # <= inclusive
-    assert m.check_pair(999, 5) == []
+    assert fires(1.99) == 0 and fires(-1.99) == 0
+    assert fires(2.0) == 1      # >= inclusive
+    assert fires(-2.0) == 1     # <= inclusive
+    assert AlertManager().check_pair(999, 5) == []
 
 
 def test_alert_disabled_and_update():
@@ -32,6 +35,7 @@ def test_alert_disabled_and_update():
     m.update_alert(a.alert_id, enabled=False)
     assert m.check_pair(1, 10) == []
     m.update_alert(a.alert_id, enabled=True, threshold_high=1.0)
+    a.last_triggered = None
     assert len(m.check_pair(1, 1.0)) == 1
     assert m.update_alert(12345, enabled=True) is None
 
@@ -51,8 +55,6 @@ def test_alert_check_all_pairs_handles_none_zscore():
     assert list(r) == [1]
 
 
-@pytest.mark.xfail(strict=True, reason="BUG-3: no dedupe/cooldown; every check above threshold re-fires "
-                                       "and increments trigger_count (alert_manager.py Alert.check)")
 def test_alert_cooldown_dedupes_repeated_checks():
     m = AlertManager()
     a = m.create_alert(1, "A", "B")
@@ -61,12 +63,14 @@ def test_alert_cooldown_dedupes_repeated_checks():
     assert a.trigger_count == 1
 
 
-def test_alert_repeat_fires_documented_current_behaviour():
+def test_alert_refires_after_cooldown():
+    from datetime import datetime, timedelta
+    from app.modules.alerts.alert_manager import ALERT_COOLDOWN_SECONDS
     m = AlertManager()
     a = m.create_alert(1, "A", "B")
-    for _ in range(3):
-        assert len(m.check_pair(1, 3.0)) == 1
-    assert a.trigger_count == 3 and a.last_triggered is not None
+    assert len(m.check_pair(1, 3.0)) == 1 and a.last_triggered is not None
+    a.last_triggered = datetime.utcnow() - timedelta(seconds=ALERT_COOLDOWN_SECONDS + 1)
+    assert len(m.check_pair(1, 3.0)) == 1 and a.trigger_count == 2
 
 
 # ---- PositionManager ----------------------------------------------------------------
@@ -317,9 +321,6 @@ def test_live_screener_failure_resets_flag_and_keeps_old_results(monkeypatch):
     assert s.get_results() == [{"id": 9}]      # degraded empty run does not wipe good data
 
 
-@pytest.mark.xfail(strict=True, reason="BUG-5: LiveScreener.start() sets is_running=True before the loop thread "
-                                       "calls _run_screening, whose guard then skips every cycle "
-                                       "(live_screener.py:116-125 vs 176-181); start() is currently unused")
 def test_live_screener_start_loop_actually_runs(monkeypatch):
     from app.modules.screener import live_screener as ls
     ran = threading.Event()
@@ -342,9 +343,6 @@ def test_live_screener_start_loop_actually_runs(monkeypatch):
         s.is_running = False
 
 
-@pytest.mark.xfail(strict=True, reason="BUG-6: POST /screener/run ignores live_screener.is_running and sets "
-                                       "_screening_in_progress only inside the background task "
-                                       "(routes.py:206-250), so run + run-live/cron can overlap")
 def test_run_endpoint_rejects_overlap_with_live_scan(client, auth, monkeypatch):
     from app.api import routes, security
     from app.modules.screener import live_screener as ls

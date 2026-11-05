@@ -18,7 +18,7 @@ class FakeLoader:
         rng = np.random.default_rng(0)
         base = 100 + np.cumsum(rng.normal(size=n))
         close = base if asset == "BBB" else 1.5 * base + rng.normal(scale=0.3, size=n)
-        idx = pd.date_range("2026-01-01", periods=n, freq="5min")
+        idx = pd.date_range(end=pd.Timestamp.now("UTC").tz_localize(None).floor("5min"), periods=n, freq="5min")
         return pd.DataFrame({"close": close}, index=idx)
 
 
