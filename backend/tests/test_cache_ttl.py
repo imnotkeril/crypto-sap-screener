@@ -28,3 +28,13 @@ def test_empty_is_stale():
 def test_intraday_goes_stale_within_hours():
     h = TIMEFRAME_MS['1h']
     assert not is_series_fresh(_series(5 * h), '1h', now_ms=9 * h + 1)
+
+
+def test_series_cache_roundtrip_is_json_not_pickle(tmp_path):
+    from app.modules.screener.data_loader import load_series_file, save_series_file
+    s = _series(9 * DAY)
+    p = tmp_path / "BTC_365.json"
+    save_series_file(s, p)
+    assert p.read_text(encoding="utf-8").lstrip().startswith("{")
+    out = load_series_file(p)
+    assert list(out.index) == list(s.index) and list(out.values) == list(s.values)

@@ -28,8 +28,22 @@ def bars_for_lookback(days: int, timeframe: str) -> int:
     candle_ms = TIMEFRAME_MS.get(timeframe, TIMEFRAME_MS['1d'])
     return max(1, int(days * TIMEFRAME_MS['1d'] // candle_ms))
 import threading
-import pickle
+import json
 from pathlib import Path
+
+
+def load_series_file(path) -> pd.Series:
+    """Read a cached price series (data-only JSON; replaces pickle, which can execute code)."""
+    with open(path, 'r', encoding='utf-8') as f:
+        d = json.load(f)
+    return pd.Series(d['values'], index=pd.to_datetime(d['index'], unit='ms'), dtype=float)
+
+
+def save_series_file(series: pd.Series, path) -> None:
+    idx = pd.DatetimeIndex(series.index)
+    payload = {'index': [int(t.value // 1_000_000) for t in idx], 'values': [float(v) for v in series.values]}
+    with open(path, 'w', encoding='utf-8') as f:
+        json.dump(payload, f)
 
 
 def is_series_fresh(series: pd.Series, timeframe: str, now_ms: Optional[float] = None) -> bool:
@@ -423,7 +437,7 @@ class DataLoader:
             return pd.Series(dtype=float)
         expected_bars = bars_for_lookback(days, timeframe)
         cache_key = f"{symbol}_{days}" if timeframe == '1d' else f"{symbol}_{timeframe}_{days}"
-        cache_file = self._cache_dir / f"{cache_key.replace('/', '_')}.pkl"
+        cache_file = self._cache_dir / f"{cache_key.replace('/', '_')}.json"
         insufficient_key = symbol if timeframe == '1d' else f"{symbol}_{timeframe}"
         if not cache_file.resolve().is_relative_to(self._cache_dir.resolve()):
             return pd.Series(dtype=float)
@@ -469,8 +483,7 @@ class DataLoader:
             # 4. Check file cache (persistent across restarts)
             if cache_file.exists():
                 try:
-                    with open(cache_file, 'rb') as f:
-                        price_series = pickle.load(f)
+                    price_series = load_series_file(cache_file)
 
                     if len(price_series) >= expected_bars * 0.8 and is_series_fresh(price_series, timeframe):
                         # Load into memory cache for faster access
@@ -512,8 +525,7 @@ class DataLoader:
                         # Try to return from file cache even if API failed
                         if cache_file.exists():
                             try:
-                                with open(cache_file, 'rb') as f:
-                                    price_series = pickle.load(f)
+                                price_series = load_series_file(cache_file)
                                 print(f"  → Using cached data for {symbol}: {len(price_series)} days (requested {days})")
                                 return price_series
                             except Exception:
@@ -539,8 +551,7 @@ class DataLoader:
                     
                     # 6. Save to file cache (persistent)
                     try:
-                        with open(cache_file, 'wb') as f:
-                            pickle.dump(price_series, f)
+                        save_series_file(price_series, cache_file)
                     except Exception:
                         # Non-critical if file cache fails
                         pass
@@ -560,8 +571,7 @@ class DataLoader:
                     # Try to return from file cache even if API failed
                     if cache_file.exists():
                         try:
-                            with open(cache_file, 'rb') as f:
-                                price_series = pickle.load(f)
+                            price_series = load_series_file(cache_file)
                             print(f"Using cached data for {symbol}: {len(price_series)} days (requested {days})")
                             return price_series
                         except Exception:
@@ -609,7 +619,7 @@ class DataLoader:
         if symbol and days:
             # Clear specific file
             cache_key = f"{symbol}_{days}"
-            cache_file = self._cache_dir / f"{cache_key.replace('/', '_')}.pkl"
+            cache_file = self._cache_dir / f"{cache_key.replace('/', '_')}.json"
             if cache_file.exists():
                 try:
                     cache_file.unlink()
@@ -617,7 +627,7 @@ class DataLoader:
                     pass
         elif symbol:
             # Clear all files for this symbol
-            pattern = f"{symbol.replace('/', '_')}_*.pkl"
+            pattern = f"{symbol.replace('/', '_')}_*.json"
             for cache_file in self._cache_dir.glob(pattern):
                 try:
                     cache_file.unlink()
@@ -625,7 +635,7 @@ class DataLoader:
                     pass
         elif days:
             # Clear all files for this days value
-            pattern = f"*_{days}.pkl"
+            pattern = f"*_{days}.json"
             for cache_file in self._cache_dir.glob(pattern):
                 try:
                     cache_file.unlink()
@@ -633,7 +643,7 @@ class DataLoader:
                     pass
         else:
             # Clear all cache files
-            for cache_file in self._cache_dir.glob("*.pkl"):
+            for cache_file in self._cache_dir.glob("*.json"):
                 try:
                     cache_file.unlink()
                 except Exception:
