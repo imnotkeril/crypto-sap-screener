@@ -2,9 +2,7 @@
 History analyzer for pairs trading metrics
 Analyzes changes in pair metrics over time
 """
-from typing import List, Dict, Optional
-from datetime import datetime, timedelta
-import pandas as pd
+from typing import List, Dict
 
 
 class HistoryAnalyzer:
@@ -98,7 +96,7 @@ class HistoryAnalyzer:
         # Sort by timestamp
         sorted_history = sorted(results_history, key=lambda x: x.get('timestamp', ''))
         
-        trends = {
+        trends: dict = {
             'total_pairs_trend': [],
             'avg_correlation_trend': [],
             'pairs_count_by_time': []

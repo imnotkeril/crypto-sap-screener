@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 
 
 @router.get("/snapshot")
-async def get_live_snapshot():
+def get_live_snapshot():
     """Get the latest intraday z-score snapshot for the top daily pairs."""
     monitor = get_intraday_monitor()
     return monitor.get_snapshot()
@@ -30,7 +30,7 @@ async def start_live_monitor():
 
 
 @router.get("/pairs/{asset_a}/{asset_b}/history")
-async def get_live_pair_history(asset_a: str, asset_b: str):
+def get_live_pair_history(asset_a: str, asset_b: str):
     """Get the recent intraday z-score history for a specific pair."""
     monitor = get_intraday_monitor()
     history = monitor.get_history(asset_a.upper(), asset_b.upper())

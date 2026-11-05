@@ -172,7 +172,7 @@ const ScreenerDashboard: React.FC = () => {
           </div>
         </header>
 
-        {statusError && (
+        {!!statusError && (
           <div className="mb-5 rounded border border-warn/30 bg-warn/5 px-4 py-3 text-sm text-warn">
             Cannot connect to backend API. Please ensure the backend server is running on http://localhost:8000
           </div>

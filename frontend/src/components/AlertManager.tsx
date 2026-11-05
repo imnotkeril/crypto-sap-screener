@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { useQuery, useQueryClient } from 'react-query';
+import React, { useState } from 'react';
+import { useQuery } from 'react-query';
 import { api } from '../services/api';
 
 interface Alert {
@@ -28,7 +28,6 @@ const AlertManager: React.FC = () => {
     threshold_high: 2.0,
     threshold_low: -2.0,
   });
-  const queryClient = useQueryClient();
 
   // Fetch alerts
   const { data: alertsData, refetch: refetchAlerts } = useQuery(
@@ -41,7 +40,7 @@ const AlertManager: React.FC = () => {
   );
 
   // Fetch triggered alerts
-  const { data: triggeredData, refetch: refetchTriggered } = useQuery(
+  const { data: triggeredData } = useQuery(
     'triggered-alerts',
     async () => {
       const response = await api.getTriggeredAlerts();

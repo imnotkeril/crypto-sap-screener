@@ -2,16 +2,17 @@
 FastAPI routes for pairs screener
 Uses in-memory live screener for real-time data
 """
-from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, Response
+from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from typing import Optional
 from datetime import datetime
 import io
+import time
 import pandas as pd
 
 from app.database import get_db
-from app.database import SessionLocal, ScreeningSession, PairsScreeningResult
+from app.database import ScreeningSession, PairsScreeningResult
 from app.api.schemas import (
     ScreeningConfigRequest,
     PairResult,
@@ -23,47 +24,35 @@ from app.api.schemas import (
     PositionCalculationResponse,
     AssetPosition
 )
+from app.config import settings
+from app.modules.screener.data_loader import bars_for_lookback
+from app.api.security import expensive_limit, require_cron_secret
 from app.modules.screener.screener import PairsScreener
 from app.modules.screener.live_screener import get_live_screener
 from app.modules.shared.models import ScreeningConfig
 import logging
 
 router = APIRouter()
+cron_router = APIRouter()
 logger = logging.getLogger(__name__)
 
 # Global variable to track running screening
 _screening_in_progress = False
+_last_cold_start_attempt: Optional[float] = None
+COLD_START_BACKOFF_SECONDS = 15 * 60
+
+
+def _cold_start_allowed(now: Optional[float] = None) -> bool:
+    """At most one automatic cold-start scan per COLD_START_BACKOFF_SECONDS."""
+    if _last_cold_start_attempt is None:
+        return True
+    return (now if now is not None else time.monotonic()) - _last_cold_start_attempt >= COLD_START_BACKOFF_SECONDS
+
+
+def _mark_cold_start_attempt() -> None:
+    global _last_cold_start_attempt
+    _last_cold_start_attempt = time.monotonic()
 _last_run_error: Optional[str] = None
-
-
-@router.get("/debug/db")
-async def debug_db():
-    """Temporary diagnostic endpoint to check DB connectivity."""
-    import traceback
-    from app.config import settings
-    from app.database import engine, make_url
-    result = {"database_url_set": bool(settings.DATABASE_URL)}
-    try:
-        u = make_url(settings.DATABASE_URL)
-        result["url_drivername"] = u.drivername
-        result["url_host"] = u.host
-        result["url_port"] = u.port
-        result["url_database"] = u.database
-        result["url_username"] = u.username
-    except Exception as e:
-        result["url_parse_error"] = str(e)
-    try:
-        if engine is None:
-            result["engine"] = None
-        else:
-            from sqlalchemy import text
-            with engine.connect() as conn:
-                conn.execute(text("SELECT 1"))
-            result["connection"] = "ok"
-    except Exception as e:
-        result["connection_error"] = str(e)
-        result["traceback"] = traceback.format_exc()
-    return result
 
 
 @router.get("/sessions")
@@ -147,7 +136,11 @@ async def get_screening_status(background_tasks: BackgroundTasks, db: Session = 
         # Cold start: no screening session has ever run (e.g. first deploy,
         # empty database). Kick off a screening run in the background so the
         # UI doesn't stay stuck on "Initializing screener..." forever.
-        if last_session is None and not status['is_running']:
+        # Backoff: a failing scan leaves last_session unset, so without a gate every
+        # /status poll (10 s) would start another scan against a rate-limited exchange.
+        if (settings.AUTO_SCREEN_ON_COLD_START and last_session is None
+                and not status['is_running'] and _cold_start_allowed()):
+            _mark_cold_start_attempt()
             background_tasks.add_task(live_screener._run_screening)
 
         last_session_response = None
@@ -185,7 +178,8 @@ async def get_screening_status(background_tasks: BackgroundTasks, db: Session = 
         )
 
 
-@router.get("/cron/run")
+@cron_router.api_route("/cron/run", methods=["GET", "POST"],
+                       dependencies=[Depends(require_cron_secret), Depends(expensive_limit)])
 async def cron_run_screening():
     """Synchronous screening run for scheduled triggers (e.g. Vercel Cron).
 
@@ -202,10 +196,10 @@ async def cron_run_screening():
         }
     except Exception as e:
         logger.error(f"Cron screening failed: {e}")
-        raise HTTPException(status_code=500, detail=f"Cron screening failed: {str(e)}")
+        raise HTTPException(status_code=500, detail="Cron screening failed")
 
 
-@router.post("/run-live")
+@router.post("/run-live", dependencies=[Depends(expensive_limit)])
 async def run_live_screening(background_tasks: BackgroundTasks):
     """Manually trigger live screener to run (fetches fresh data from Binance)"""
     try:
@@ -226,10 +220,10 @@ async def run_live_screening(background_tasks: BackgroundTasks):
         raise
     except Exception as e:
         logger.error(f"Error starting live screening: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to start screening: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to start screening")
 
 
-@router.post("/run", response_model=ScreeningSessionResponse)
+@router.post("/run", response_model=ScreeningSessionResponse, dependencies=[Depends(expensive_limit)])
 async def run_screening(
     config: ScreeningConfigRequest,
     background_tasks: BackgroundTasks,
@@ -238,20 +232,12 @@ async def run_screening(
     """Start a new screening session (runs in memory)"""
     global _screening_in_progress
     
-    if _screening_in_progress:
+    if _screening_in_progress or get_live_screener().get_status()['is_running']:
         raise HTTPException(status_code=400, detail="Screening already in progress")
+    _screening_in_progress = True  # claimed synchronously; released by the background task
     
     # Convert to internal config
-    screening_config = ScreeningConfig(
-        assets=config.assets,
-        max_assets=config.max_assets,
-        lookback_days=config.lookback_days,
-        timeframe=config.timeframe,
-        min_correlation=config.min_correlation,
-        max_adf_pvalue=config.max_adf_pvalue,
-        include_hurst=config.include_hurst,
-        min_volume_usd=config.min_volume_usd
-    )
+    screening_config = ScreeningConfig(**config.model_dump())
     
     # Create session info
     session_id = int(datetime.utcnow().timestamp())
@@ -406,6 +392,8 @@ async def get_screening_results(
                 beta=result['beta'],
                 spread_std=result['spread_std'],
                 hurst_exponent=result.get('hurst_exponent'),
+                half_life=result.get('half_life'),
+                expected_net_edge_pct=result.get('expected_net_edge_pct'),
                 screening_date=screening_date,
                 lookback_days=result.get('lookback_days', 365),
                 timeframe=result.get('timeframe'),
@@ -437,8 +425,8 @@ async def get_pair_details(pair_id: int, db: Session = Depends(get_db)):
         
         # Find pair by ID or index
         pair = None
-        for idx, result in enumerate(results):
-            if result.get('id') == pair_id or (idx + 1) == pair_id:
+        for result in results:
+            if result.get('id') == pair_id:
                 pair = result
                 break
         
@@ -456,6 +444,8 @@ async def get_pair_details(pair_id: int, db: Session = Depends(get_db)):
                     beta=row.beta,
                     spread_std=row.spread_std,
                     hurst_exponent=row.hurst_exponent,
+                    half_life=row.half_life,
+                    expected_net_edge_pct=row.expected_net_edge_pct,
                     screening_date=row.screening_date,
                     lookback_days=row.lookback_days,
                     mean_spread=row.mean_spread,
@@ -486,6 +476,8 @@ async def get_pair_details(pair_id: int, db: Session = Depends(get_db)):
             beta=pair['beta'],
             spread_std=pair['spread_std'],
             hurst_exponent=pair.get('hurst_exponent'),
+            half_life=pair.get('half_life'),
+            expected_net_edge_pct=pair.get('expected_net_edge_pct'),
             screening_date=screening_date,
             lookback_days=pair.get('lookback_days', 365),
             mean_spread=pair.get('mean_spread'),
@@ -498,7 +490,7 @@ async def get_pair_details(pair_id: int, db: Session = Depends(get_db)):
         raise
     except Exception as e:
         logger.error(f"Error getting pair details: {e}")
-        raise HTTPException(status_code=503, detail=f"Error: {str(e)}")
+        raise HTTPException(status_code=503, detail="Internal server error")
 
 
 @router.get("/stats", response_model=StatisticsResponse)
@@ -554,7 +546,7 @@ async def get_pair_spread_data(pair_id: int):
         # Find pair by ID or index
         pair = None
         for idx, result in enumerate(results):
-            if result.get('id') == pair_id or (idx + 1) == pair_id:
+            if result.get('id') == pair_id:
                 pair = result
                 break
         
@@ -562,9 +554,7 @@ async def get_pair_spread_data(pair_id: int):
             raise HTTPException(status_code=404, detail="Pair not found")
         
         # Load price data and calculate spread
-        from app.modules.screener.screener import PairsScreener
         from app.modules.screener.data_loader import DataLoader
-        from app.modules.shared.models import ScreeningConfig
         from app.config import settings
         
         data_loader = DataLoader()
@@ -572,18 +562,18 @@ async def get_pair_spread_data(pair_id: int):
         
         # Load price series - always fetch fresh data to ensure we have the requested period
         # Clear cache for this symbol/days combination to force fresh fetch
-        price_a = data_loader.get_price_series(pair['asset_a'], days=lookback_days, db=None)
-        price_b = data_loader.get_price_series(pair['asset_b'], days=lookback_days, db=None)
+        price_a = data_loader.get_price_series(pair['asset_a'], days=lookback_days, db=None, timeframe=pair.get('timeframe') or '1d')
+        price_b = data_loader.get_price_series(pair['asset_b'], days=lookback_days, db=None, timeframe=pair.get('timeframe') or '1d')
         
         # Verify we have enough data points (at least 80% of requested days)
-        min_required_points = int(lookback_days * 0.8)
+        min_required_points = int(bars_for_lookback(lookback_days, pair.get('timeframe') or '1d') * 0.8)
         if len(price_a) < min_required_points or len(price_b) < min_required_points:
             # If we don't have enough data, try to fetch more
             # This can happen if cache had less data than requested
             data_loader.clear_cache(pair['asset_a'], lookback_days)
             data_loader.clear_cache(pair['asset_b'], lookback_days)
-            price_a = data_loader.get_price_series(pair['asset_a'], days=lookback_days, db=None)
-            price_b = data_loader.get_price_series(pair['asset_b'], days=lookback_days, db=None)
+            price_a = data_loader.get_price_series(pair['asset_a'], days=lookback_days, db=None, timeframe=pair.get('timeframe') or '1d')
+            price_b = data_loader.get_price_series(pair['asset_b'], days=lookback_days, db=None, timeframe=pair.get('timeframe') or '1d')
         
         if len(price_a) < 50 or len(price_b) < 50:
             raise HTTPException(status_code=400, detail="Insufficient data for chart")
@@ -616,8 +606,8 @@ async def get_pair_spread_data(pair_id: int):
                     rolling_beta = float(model.params[1])
                     rolling_alpha = float(model.params[0])
                     
-                    # Validate beta
-                    if rolling_beta <= 0 or rolling_beta > 10:
+                    # Beta is a price-unit ratio (can be >> 10); only sign/finiteness matter (R-07)
+                    if not np.isfinite(rolling_beta) or rolling_beta <= 0:
                         continue
                     
                     # Calculate rolling z-score using last 60 days with this beta/alpha
@@ -1056,7 +1046,7 @@ async def get_pair_spread_data(pair_id: int):
         logger.error(f"Error getting pair spread data: {e}")
         import traceback
         traceback.print_exc()
-        raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.post("/calculate-position", response_model=PositionCalculationResponse)
@@ -1072,7 +1062,7 @@ async def calculate_position(request: PositionCalculationRequest):
         # Find pair by ID
         pair = None
         for idx, result in enumerate(results):
-            if result.get('id') == request.pair_id or (idx + 1) == request.pair_id:
+            if result.get('id') == request.pair_id:
                 pair = result
                 break
         
@@ -1137,14 +1127,13 @@ async def calculate_position(request: PositionCalculationRequest):
         logger.error(f"Error calculating position: {e}")
         import traceback
         traceback.print_exc()
-        raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.get("/pairs/{pair_id}/history")
 async def get_pair_history(pair_id: int):
     """Get history of a specific pair across screening sessions"""
     try:
-        from app.modules.history.history_analyzer import HistoryAnalyzer
         
         live_screener = get_live_screener()
         history = live_screener.get_history()
@@ -1160,7 +1149,7 @@ async def get_pair_history(pair_id: int):
                     # We need to match by assets since IDs might change
                     pair = None
                     for idx, r in enumerate(results):
-                        if r.get('id') == pair_id or (idx + 1) == pair_id:
+                        if r.get('id') == pair_id:
                             pair = r
                             break
                     
@@ -1182,7 +1171,7 @@ async def get_pair_history(pair_id: int):
         }
     except Exception as e:
         logger.error(f"Error getting pair history: {e}")
-        raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.get("/trends")
@@ -1200,7 +1189,7 @@ async def get_trends():
         return trends
     except Exception as e:
         logger.error(f"Error getting trends: {e}")
-        raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.get("/comparison")
@@ -1233,7 +1222,7 @@ async def compare_periods():
         }
     except Exception as e:
         logger.error(f"Error comparing periods: {e}")
-        raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.get("/export/csv")
@@ -1259,8 +1248,8 @@ async def export_results_csv(
         # Select relevant columns
         columns = [
             'asset_a', 'asset_b', 'correlation', 'beta', 'adf_pvalue',
-            'spread_std', 'hurst_exponent', 'mean_spread', 'current_zscore',
-            'composite_score'
+            'spread_std', 'hurst_exponent', 'half_life', 'expected_net_edge_pct',
+            'mean_spread', 'current_zscore', 'composite_score'
         ]
         available_columns = [col for col in columns if col in df.columns]
         df = df[available_columns]
@@ -1277,7 +1266,7 @@ async def export_results_csv(
         )
     except Exception as e:
         logger.error(f"Error exporting CSV: {e}")
-        raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.get("/export/excel")
@@ -1303,8 +1292,8 @@ async def export_results_excel(
         # Select relevant columns
         columns = [
             'asset_a', 'asset_b', 'correlation', 'beta', 'adf_pvalue',
-            'spread_std', 'hurst_exponent', 'mean_spread', 'current_zscore',
-            'composite_score'
+            'spread_std', 'hurst_exponent', 'half_life', 'expected_net_edge_pct',
+            'mean_spread', 'current_zscore', 'composite_score'
         ]
         available_columns = [col for col in columns if col in df.columns]
         df = df[available_columns]
@@ -1324,7 +1313,7 @@ async def export_results_excel(
         logger.error(f"Error exporting Excel: {e}")
         import traceback
         traceback.print_exc()
-        raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.get("/pairs/{pair_id}/export")
@@ -1337,7 +1326,7 @@ async def export_pair_data(pair_id: int, format: str = "csv"):
         # Find pair
         pair = None
         for idx, result in enumerate(results):
-            if result.get('id') == pair_id or (idx + 1) == pair_id:
+            if result.get('id') == pair_id:
                 pair = result
                 break
         
@@ -1347,15 +1336,14 @@ async def export_pair_data(pair_id: int, format: str = "csv"):
         # Get spread data
         spread_data = None
         try:
-            from app.modules.screener.screener import PairsScreener
             from app.modules.screener.data_loader import DataLoader
             from app.config import settings
             
             data_loader = DataLoader()
             lookback_days = pair.get('lookback_days', settings.SCREENER_LOOKBACK_DAYS)
             
-            price_a = data_loader.get_price_series(pair['asset_a'], days=lookback_days, db=None)
-            price_b = data_loader.get_price_series(pair['asset_b'], days=lookback_days, db=None)
+            price_a = data_loader.get_price_series(pair['asset_a'], days=lookback_days, db=None, timeframe=pair.get('timeframe') or '1d')
+            price_b = data_loader.get_price_series(pair['asset_b'], days=lookback_days, db=None, timeframe=pair.get('timeframe') or '1d')
             
             if len(price_a) >= 50 and len(price_b) >= 50:
                 from app.modules.screener.cointegration import CointegrationTester
@@ -1411,4 +1399,4 @@ async def export_pair_data(pair_id: int, format: str = "csv"):
         raise
     except Exception as e:
         logger.error(f"Error exporting pair data: {e}")
-        raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Internal server error")

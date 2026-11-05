@@ -1,0 +1,41 @@
+server {
+    listen ${PORT};
+    server_name _;
+    root /usr/share/nginx/html;
+    index index.html;
+    client_max_body_size 1m;
+
+    add_header X-Content-Type-Options nosniff always;
+    add_header X-Frame-Options DENY always;
+    add_header Referrer-Policy no-referrer always;
+
+    # S-02: this proxy injects the API key, so it must not serve the API to arbitrary clients.
+    # Only loopback, private Docker/LAN ranges and FRONTEND_ALLOW_CIDR may use /api/.
+    # For a public deployment put real user auth (SSO / auth_basic / VPN) in front first.
+    location /api/ {
+        allow 127.0.0.1;
+        allow 172.16.0.0/12;
+        allow 192.168.0.0/16;
+        allow ${FRONTEND_ALLOW_CIDR};
+        deny all;
+
+        proxy_pass ${BACKEND_URL};
+        proxy_ssl_server_name on;
+        proxy_set_header X-API-Key "${API_KEY}";
+        # S-03: overwrite (never append) so clients cannot spoof their IP for the rate limiter
+        proxy_set_header X-Forwarded-For $remote_addr;
+        proxy_set_header X-Real-IP $remote_addr;
+        # keep the public Host so FastAPI trailing-slash redirects point back through this proxy
+        proxy_set_header Host $http_host;
+        proxy_read_timeout 300s;
+    }
+
+    # Cron is for schedulers with CRON_SECRET, never through the key-injecting proxy.
+    location /api/v1/screener/cron/ {
+        return 404;
+    }
+
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+}

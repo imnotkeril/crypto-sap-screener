@@ -35,30 +35,20 @@ class HurstCalculator:
         if len(series_clean) < max_lags * 2:
             return None
         
-        # Calculate increments
-        increments = np.diff(series_clean)
-        
-        if len(increments) < max_lags:
-            return None
-        
-        tau_values = np.arange(1, min(max_lags, len(increments) // 2))
+        # Generalized Hurst exponent (Di Matteo): K_q(tau) = <|X(t+tau) - X(t)|^q>
+        # scales as tau^(q*H). Computed on the series *levels* (the spread),
+        # not on its increments - using increments of increments biases H to ~0.
+        n = len(series_clean)
+        tau_values = np.arange(1, min(max_lags, n // 2))
         k_values = []
-        
+
         for tau in tau_values:
-            if tau >= len(increments):
+            diff_tau = series_clean[tau:] - series_clean[:-tau]
+            k = np.mean(np.abs(diff_tau) ** q)
+            if k <= 0:
                 break
-            
-            # Calculate K_q(tau)
-            diff_tau = increments[tau:] - increments[:-tau]
-            numerator = np.mean(np.abs(diff_tau) ** q)
-            denominator = np.mean(np.abs(increments) ** q)
-            
-            if denominator == 0:
-                continue
-            
-            k = numerator / denominator
             k_values.append(k)
-        
+
         if len(k_values) < 5:  # Need minimum points for regression
             return None
         
@@ -71,6 +61,6 @@ class HurstCalculator:
             slope, _ = np.polyfit(log_tau, log_k, 1)
             h_exponent = slope / q
             return h_exponent
-        except:
+        except (np.linalg.LinAlgError, ValueError):
             return None
 

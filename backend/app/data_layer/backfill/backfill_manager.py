@@ -36,7 +36,6 @@ async def backfill_symbol_timeframe(
     if start >= now:
         return
 
-    step = timeframe_to_timedelta(timeframe) * BATCH_SIZE
     total_inserted = 0
 
     while start < now:

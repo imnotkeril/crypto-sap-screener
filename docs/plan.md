@@ -1,0 +1,16 @@
+# Plan (finish after audit)
+
+- [x] T1 adopt docs + WIP committed (check: git clean)
+- [x] T2 auth (API key) + CORS allowlist + cron/run protection + rate limit
+- [x] T3 remove /debug/db, stop leaking str(e)
+- [x] T4 validate pair_id in alerts/positions
+- [x] T5 bump fastapi/starlette/python-multipart/anyio/python-dotenv (pip-audit clean)
+- [x] T6 compose: ports 127.0.0.1, env passwords, prod frontend build, non-root, healthcheck
+- [x] T7 beta/Hurst regression (log prices) + tests
+- [x] T8 live monitor fix
+- [x] T9 tests: net-edge, FDR, Kalman, API smoke
+- [~] T10 tsc 0, ruff F clean, bundle split; mypy NOT clean (77/102)
+- [x] T11 README/.env.example/docs, audit "After fixes"
+- [x] T12 framework docs: REVIEW/QA/SECURITY/RUNBOOK/RELEASE_CHECKLIST/RULES + README rewrite (agents: reviewer, qa-tester, security-reviewer, devops, tech-writer)
+- [x] T13 fix REVIEW.md P1 findings (R-01..R-10) - 2026-11-03, 112 passed
+- [~] T14 scheduler + /health last-scan done (B2/B3); SECURITY.md findings not re-checked
