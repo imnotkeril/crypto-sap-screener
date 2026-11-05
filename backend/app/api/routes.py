@@ -25,6 +25,7 @@ from app.api.schemas import (
     AssetPosition
 )
 from app.config import settings
+from app.modules.screener.data_loader import bars_for_lookback
 from app.api.security import expensive_limit, require_cron_secret
 from app.modules.screener.screener import PairsScreener
 from app.modules.screener.live_screener import get_live_screener
@@ -424,8 +425,8 @@ async def get_pair_details(pair_id: int, db: Session = Depends(get_db)):
         
         # Find pair by ID or index
         pair = None
-        for idx, result in enumerate(results):
-            if result.get('id') == pair_id or (idx + 1) == pair_id:
+        for result in results:
+            if result.get('id') == pair_id:
                 pair = result
                 break
         
@@ -545,7 +546,7 @@ async def get_pair_spread_data(pair_id: int):
         # Find pair by ID or index
         pair = None
         for idx, result in enumerate(results):
-            if result.get('id') == pair_id or (idx + 1) == pair_id:
+            if result.get('id') == pair_id:
                 pair = result
                 break
         
@@ -561,18 +562,18 @@ async def get_pair_spread_data(pair_id: int):
         
         # Load price series - always fetch fresh data to ensure we have the requested period
         # Clear cache for this symbol/days combination to force fresh fetch
-        price_a = data_loader.get_price_series(pair['asset_a'], days=lookback_days, db=None)
-        price_b = data_loader.get_price_series(pair['asset_b'], days=lookback_days, db=None)
+        price_a = data_loader.get_price_series(pair['asset_a'], days=lookback_days, db=None, timeframe=pair.get('timeframe') or '1d')
+        price_b = data_loader.get_price_series(pair['asset_b'], days=lookback_days, db=None, timeframe=pair.get('timeframe') or '1d')
         
         # Verify we have enough data points (at least 80% of requested days)
-        min_required_points = int(lookback_days * 0.8)
+        min_required_points = int(bars_for_lookback(lookback_days, pair.get('timeframe') or '1d') * 0.8)
         if len(price_a) < min_required_points or len(price_b) < min_required_points:
             # If we don't have enough data, try to fetch more
             # This can happen if cache had less data than requested
             data_loader.clear_cache(pair['asset_a'], lookback_days)
             data_loader.clear_cache(pair['asset_b'], lookback_days)
-            price_a = data_loader.get_price_series(pair['asset_a'], days=lookback_days, db=None)
-            price_b = data_loader.get_price_series(pair['asset_b'], days=lookback_days, db=None)
+            price_a = data_loader.get_price_series(pair['asset_a'], days=lookback_days, db=None, timeframe=pair.get('timeframe') or '1d')
+            price_b = data_loader.get_price_series(pair['asset_b'], days=lookback_days, db=None, timeframe=pair.get('timeframe') or '1d')
         
         if len(price_a) < 50 or len(price_b) < 50:
             raise HTTPException(status_code=400, detail="Insufficient data for chart")
@@ -1061,7 +1062,7 @@ async def calculate_position(request: PositionCalculationRequest):
         # Find pair by ID
         pair = None
         for idx, result in enumerate(results):
-            if result.get('id') == request.pair_id or (idx + 1) == request.pair_id:
+            if result.get('id') == request.pair_id:
                 pair = result
                 break
         
@@ -1148,7 +1149,7 @@ async def get_pair_history(pair_id: int):
                     # We need to match by assets since IDs might change
                     pair = None
                     for idx, r in enumerate(results):
-                        if r.get('id') == pair_id or (idx + 1) == pair_id:
+                        if r.get('id') == pair_id:
                             pair = r
                             break
                     
@@ -1325,7 +1326,7 @@ async def export_pair_data(pair_id: int, format: str = "csv"):
         # Find pair
         pair = None
         for idx, result in enumerate(results):
-            if result.get('id') == pair_id or (idx + 1) == pair_id:
+            if result.get('id') == pair_id:
                 pair = result
                 break
         
@@ -1341,8 +1342,8 @@ async def export_pair_data(pair_id: int, format: str = "csv"):
             data_loader = DataLoader()
             lookback_days = pair.get('lookback_days', settings.SCREENER_LOOKBACK_DAYS)
             
-            price_a = data_loader.get_price_series(pair['asset_a'], days=lookback_days, db=None)
-            price_b = data_loader.get_price_series(pair['asset_b'], days=lookback_days, db=None)
+            price_a = data_loader.get_price_series(pair['asset_a'], days=lookback_days, db=None, timeframe=pair.get('timeframe') or '1d')
+            price_b = data_loader.get_price_series(pair['asset_b'], days=lookback_days, db=None, timeframe=pair.get('timeframe') or '1d')
             
             if len(price_a) >= 50 and len(price_b) >= 50:
                 from app.modules.screener.cointegration import CointegrationTester
