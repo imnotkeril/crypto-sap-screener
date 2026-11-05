@@ -25,6 +25,8 @@ server {
         # S-03: overwrite (never append) so clients cannot spoof their IP for the rate limiter
         proxy_set_header X-Forwarded-For $remote_addr;
         proxy_set_header X-Real-IP $remote_addr;
+        # keep the public Host so FastAPI trailing-slash redirects point back through this proxy
+        proxy_set_header Host $http_host;
         proxy_read_timeout 300s;
     }
 

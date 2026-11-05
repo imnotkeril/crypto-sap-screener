@@ -9,7 +9,7 @@ Project type: finance/screener, single-user tool, no order placement (`grep crea
 | Severity | Count | IDs |
 |---|---|---|
 | P0 | 0 | - |
-| P1 | 1 open (S-01 closed 2026-11-03 for the symbol path; pickle format still in use) | S-02 |
+| P1 | 0 open (S-01 closed: symbol validation + JSON cache; S-02 mitigated by allowlist, see below) | - |
 | P2 | 5 | S-03, S-04, S-05, S-06, S-07 |
 | P3 | 3 | S-08, S-09, S-10 |
 
@@ -134,3 +134,11 @@ The built-in `security-review` skill was not run; every category above was trace
 - 2026-10-25 - **Filename sanitizing with `.replace('/', '_')` is not enough on Windows**: `\`, `C:\` and `\\host\share` survive and `pathlib` joins an absolute/UNC part by replacing the base; with `pickle.load` this is SMB-fetched RCE. Allowlist the key (`fullmatch [A-Za-z0-9_]+`), check `resolve().is_relative_to(base)`, never unpickle caches.
 - 2026-10-25 - **Reverse proxy that injects the API key turns auth off** for everyone who can reach the proxy. Inject only on loopback/private networks or put user auth in front.
 - 2026-10-25 - **IP rate limiter behind a proxy keys on the proxy IP** (one bucket for all) unless the proxy overwrites `X-Forwarded-For` and the app trusts it only from the proxy CIDR.
+
+
+## Status 2026-11-05
+- S-01 closed: symbols validated at API and loader, cache path resolved under cache dir, cache is JSON (no pickle).
+- S-02 mitigated (safest default, owner may change): the frontend nginx only serves /api/ to loopback, 172.16/12, 192.168/16 and FRONTEND_ALLOW_CIDR; everyone else gets 403; /api/v1/screener/cron/ is 404 through the proxy (cron uses CRON_SECRET directly on the backend). A public deployment still needs real user auth in front (SSO/VPN/auth_basic) because the proxy injects API_KEY.
+- S-03 fixed: X-Forwarded-For overwritten by nginx, uvicorn trusts forwarded headers only from 172.16/12, limiter drops idle keys.
+- S-07 reduced: vite 5.4.21; remaining npm advisories are dev-server only (esbuild/vite <= 6, fix needs a breaking vite upgrade; `npm install vite@7` hit a peer conflict).
+- S-04 (request size/cost bounds), S-06 (default open API when API_KEY unset) unchanged.

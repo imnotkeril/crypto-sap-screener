@@ -1,6 +1,6 @@
 # QA report - Statistical Arbitrage Pairs Screener (2026-10-25, branch chore/audit)
 
-Verdict: **RED (conditional)** - 0 failing tests, but open bugs (5 pinned as strict xfail; others documented below). (updated 2026-11-03: BUG-1 fixed; 112 passed, 4 xfailed: BUG-3, 5, 6, 7). Not GREEN until BUG-3, BUG-6 are fixed or consciously accepted.
+Verdict (2026-11-05): **GREEN for unit/API level** - 127 passed, 0 xfail; BUG-1,3,5,6,7 fixed; BUG-2/4/8 low/documented. Earlier verdict kept for history: **RED (conditional)** - 0 failing tests, but open bugs (5 pinned as strict xfail; others documented below). (updated 2026-11-03: BUG-1 fixed; 112 passed, 4 xfailed: BUG-3, 5, 6, 7). Not GREEN until BUG-3, BUG-6 are fixed or consciously accepted.
 
 ## Risk map
 | Area | Tier | Tests | Result |
@@ -9,11 +9,11 @@ Verdict: **RED (conditional)** - 0 failing tests, but open bugs (5 pinned as str
 | Position manager + /positions API (CRUD, PnL, validation) | A | test_alerts_positions.py | PASS |
 | Backtester accounting (pnl legs, equity reconciliation, costs) | A/B | test_backtester.py | PASS (BUG-8 pinned) |
 | Backtest metrics (Sharpe, DD, win rate, PF, Kelly, MAE, leverage) | B | test_calculator_metrics.py | PASS |
-| Alerts (manager + API CRUD, dedupe/cooldown) | B | test_alerts_positions.py | PASS + 1 xfail (BUG-3) |
+| Alerts (manager + API CRUD, dedupe/cooldown) | B | test_alerts_positions.py | PASS (BUG-3 fixed: 15-min cooldown) |
 | Auth matrix (none / bad / empty / good key / cron secret) | A | test_alerts_positions.py, test_api_security.py | PASS |
 | Exports csv/excel (golden, filters, empty) | B | test_alerts_positions.py | PASS |
-| Live-screener overlap / failure / degraded-empty run | B | test_alerts_positions.py | PASS + 2 xfail (BUG-5, BUG-6) |
-| Stale / empty / failing feed (intraday monitor) | B | test_stale_feed.py | PASS + 1 xfail (BUG-7) |
+| Live-screener overlap / failure / degraded-empty run | B | test_alerts_positions.py | PASS (BUG-5, BUG-6 fixed) |
+| Stale / empty / failing feed (intraday monitor) | B | test_stale_feed.py | PASS (BUG-7 fixed: stale candles rejected) |
 | History analyzer | B | test_calculator_metrics.py | PASS |
 | Cointegration/Hurst/Kalman/net-edge | B | pre-existing test_stats.py, test_screener.py | PASS |
 | Frontend UI | C | not tested | browser pass not done |
