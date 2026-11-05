@@ -1,30 +1,30 @@
 # Handoff
 status: active
-date: 2026-11-03
-from-chat-tokens: 250000
+date: 2026-11-05
+from-chat-tokens: 300000
 
 ## Goal
-Bring the crypto stat-arb pairs screener (FastAPI + React, finance/screener router) to release-ready. All 10 review P1 fixed; remaining work is P2/QA bugs, one security P1 needing an owner decision, and release blockers that need the owner. No push to main / PR merge / deploy / history rewrite without the owner's yes (pushing to chore/audit is allowed).
+Bring the crypto stat-arb pairs screener (FastAPI + React, finance/screener router) to release-ready. Code work is essentially done; what remains is the full design gate, a few leftovers and release steps that need the owner. No push to main / PR merge / deploy / history rewrite without the owner's yes (pushing to chore/audit was allowed by the lead session).
 
 ## State
-- Done: audit, security hardening, deps pinned, Docker hardened, Hurst/FDR fixes, README+screenshots, framework docs, and (2026-11-03) R-01..R-10 fixed test-first, BUG-1, S-01, scan scheduler + /health freshness, compose log rotation + pinned images + secured datalayer compose, npm audit fix, UI disclaimer/llms.txt (see docs/STATE.md).
-- Evidence: backend pytest 121 passed + 4 xfailed (BUG-3,5,6,7); frontend tsc 0 errors, `npm run build` ok; mypy 81 errors (`--ignore-missing-imports`); ruff (E9,F) 4 pre-existing F841; pip-audit clean; npm audit --omit=dev: 0 high, 5 moderate (react-query v3 chain); secrets-scan --history: 0 hits.
-- Running: nothing.
-- Branch: chore/audit, local commits on top of origin/chore/audit (1418090); see `git log`. Push to chore/audit is allowed; not main.
+- Done: all 10 review P1, BUG-1/3/5/6/7 (0 xfail left), S-01 (JSON cache, symbol validation), S-02 (nginx allowlist, cron 404 via proxy), S-03, S-07 partial, R-11..R-13, R-15/16, R-18..R-20, scan scheduler + /health freshness, compose hardening, docker E2E smoke, light design review (see docs/STATE.md).
+- Evidence: backend pytest 127 passed, 0 xfail; mypy clean (backend/mypy.ini documents ORM Column overrides); ruff F clean; frontend tsc 0, build ok; docker build of backend+frontend, real Binance scan inside the container (561 pairs tested, 3 found), /health, 401 without key, proxy 200, cron 404, live snapshot with Kalman z verified; pip-audit clean; npm: dev-server-only advisories (vite/esbuild) + react-query chain remain.
+- Running: nothing (compose project audit-statarb stopped).
+- Branch: chore/audit. Commits after 5f883ab were NOT pushed by this session (the push was blocked by the permission classifier); check `git status -sb` and push to chore/audit if allowed.
 
 ## Decisions
-- beta 70/544 is a price-unit ratio, not a bug; backtester/spread chart no longer cap beta at 10.
-- FDR is opt-in; q-values always attached.
-- Kalman runs on first-value-normalised prices, R auto-estimated from warm-up OLS residuals (INTRADAY_KALMAN_R unset); Q stays absolute in normalised units (tying Q to R was tested: z calibrates but beta stops tracking). z std is still sub-unit.
-- Backtester fills on the next bar's close; z-stop fires on the adverse side; no full-sample beta fallback (bars without 30 trailing bars are skipped).
-- Alerts match results by (asset_a, asset_b), not rank id.
-- Scheduler: in-process thread, `SCAN_SCHEDULER_ENABLED` (compose true), one attempt per `SCAN_INTERVAL_SECONDS`; /health 503 when last scan older than 2x interval.
+- beta 70/544 is a price-unit ratio, not a bug; no beta cap at 10 anywhere.
+- FDR is opt-in; BH family now = all pairs passing the correlation screen; q-value exposed as adf_pvalue_fdr (not persisted).
+- Kalman on first-value-normalised prices, R auto from warm-up residuals; Q absolute in normalised units; z dispersion still sub-unit.
+- Backtester: next-bar fills, adverse-side z-stop, no full-sample beta fallback.
+- Alerts match by (asset_a, asset_b) with a 15-min cooldown; DB alerts evaluated.
+- S-02 default (flag for owner): nginx serves /api only to loopback, 172.16/12, 192.168/16 and FRONTEND_ALLOW_CIDR; cron path is 404 through the proxy; the proxy still injects API_KEY, so any public exposure needs real auth in front.
+- Scheduler: SCAN_SCHEDULER_ENABLED (compose true), one attempt per SCAN_INTERVAL_SECONDS; /health 503 when last scan older than 2x interval.
 
 ## Next
-1. Security: S-02 (nginx injects API_KEY for every client) once the owner picks the auth model; S-03 X-Forwarded-For + limiter; S-07 vite bump; replace pickle cache with data-only format.
-2. QA bugs: BUG-3 alert cooldown, BUG-5 LiveScreener.start loop, BUG-6 overlapping scans, BUG-7 stale feed (remove xfail as each lands).
-3. REVIEW P2 R-11..R-20 (BH over all tested pairs and expose q-value, net-edge std, composite renormalise, monitor closed candle, timeframe in spread/backtest, restore all DB columns, test gaps, print/except debt, mypy).
-4. Release: B9 docker clean build + E2E smoke, B10 live monitor recheck on real Binance (use_fdr=false), design-reviewer gate (375/768/1440), remove stale deploy files after the host is chosen.
+1. Full design-reviewer gate with Playwright (docs/DESIGN_REVIEW.md is partial): keyboard, motion, Live monitor, Trends, pair detail; add a `<main>` landmark, mobile card layout for the pairs table.
+2. Leftovers: R-14 (zscore_delta), R-15 backtester timeframe, R-17 stronger FDR test, BUG-2/4/8 (low), S-04 cost bounds, S-06, react-query v5, vite 7.
+3. Release (owner-dependent): B1 history purge, B6 secrets/domain/TLS/CORS, B8 stale deploy files after host choice, Postgres dump/restore and datalayer container test, LICENSE.
 
 ## Open questions
 - Secrets: API_KEY, CRON_SECRET, REDIS_PASSWORD, POSTGRES_PASSWORD (.env, never in chat).
@@ -32,16 +32,16 @@ Bring the crypto stat-arb pairs screener (FastAPI + React, finance/screener rout
 - Alerts channel: Telegram/email or in-app only.
 - Purge backend/data/stat_arb.db from git history (history rewrite)?
 - LICENSE choice (none added).
-- S-02: how to authenticate users in front of the frontend container.
+- S-02: keep the allowlist default or put SSO/VPN/auth_basic in front?
 - pip SSL (self-signed chain): `--trusted-host` was blocked; allow or fix certificates.
 
 ## Traps
 - Cyrillic path breaks uv run; use the system Python / venv python directly.
-- Tests share a rate limiter: conftest resets it per test.
-- Heredocs in the shell mangle backslashes: build path-like strings with chr(92) in tests.
-- Alerts check reads memory only when no DB session; pair_id (scan rank) is not stable.
+- Shell heredocs/sed mangle backslashes and line continuations (broke the Dockerfile once): use the Edit/Write tools for such files.
+- Tests share a rate limiter and the /run flag: conftest resets both per test.
+- Compose host ports clash with other audit projects: use a project name and an override file with high ports (see RUNBOOK / this session's override).
 
 ## Verify
-- `cd backend && python -m pytest -q` (121 passed, 4 xfailed)
+- `cd backend && python -m pytest -q` (127 passed) and `python -m mypy app`
 - `cd frontend && npx tsc --noEmit && npm run build`
 - `git status` clean on chore/audit

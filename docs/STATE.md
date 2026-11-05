@@ -18,14 +18,14 @@ On a rate-limit cut or new session: read this file, then docs/plan.md, continue 
 - [x] T13 all 10 review P1 fixed test-first - 2fa5692 6a8d588 6b47b26 0360048 1141ee1 8458801 d21f37d d26f462; backend 121 passed, 4 xfailed
 - [x] release-prep B2/B3/B4/B5 + B7/B8 partly - 59866c7 ae2c2d0 (scheduler, /health age, log rotation, pins, SQLite restore tested, secrets-scan history 0 hits, pip-audit clean, npm audit fix)
 - [x] S-01 path traversal/pickle via symbol closed at API + loader (symbol regex + resolve check); UI disclaimer, survivorship note, llms.txt (R-19)
+- [x] 2026-11-05: BUG-3/5/6/7 fixed (0 xfail), S-01 JSON cache, S-02 nginx allowlist + cron 404, S-03, S-07 partial, R-11..R-13, R-15..R-16, R-18..R-20 (mypy clean), docker E2E smoke on real Binance, light design review (+ nginx Host redirect fix); backend 127 passed
 - [x] docs - README rewritten from real code (tech-writer), PROGRESS.md merged below
 
 ## Next
-- [ ] SECURITY.md S-02 (nginx injects API_KEY for any client: needs owner decision on auth model), S-03 (X-Forwarded-For/limiter), S-04, S-05 done in compose, S-06, S-07 (vite bump), pickle -> data-only cache (S-01 part 3)
-- [ ] QA.md BUG-3 (alert cooldown), BUG-5 (LiveScreener.start loop), BUG-6 (overlapping scans), BUG-7 (stale feed): 4 strict xfails remain
-- [ ] REVIEW.md P2 (R-11..R-20), design-reviewer gate not run
-- [ ] Release: B1 history purge (owner yes), B6 secrets/domain/TLS/CORS (owner), B8 remove stale deploy files once host chosen, B9 docker clean build + E2E, B10 live monitor recheck on real Binance (use_fdr=false); LICENSE (owner chooses)
-- [ ] mypy debt (81 errors), 4 ruff F841 (pre-existing), react-query v3 -> v5 (5 moderate npm advisories)
+- [ ] Full design-reviewer gate with Playwright (docs/DESIGN_REVIEW.md is partial), `<main>` landmark, mobile card layout for the pairs table
+- [ ] REVIEW leftovers: R-14 zscore_delta mixes statistics, R-15 backtester ignores timeframe, R-17 weak FDR assertion, cointegration prints / duplicate OLS; BUG-2/4/8 low
+- [ ] Release: B1 history purge (owner yes), B6 secrets/domain/TLS/CORS (owner), B8 remove stale deploy files after host choice, Postgres dump/restore test, datalayer container E2E, LICENSE (owner)
+- [ ] S-04 request cost bounds, S-06 open API when API_KEY unset, react-query v3 -> v5, vite 7 (peer conflict)
 
 ## Needed from owner
 - Values for API_KEY, CRON_SECRET, REDIS_PASSWORD, POSTGRES_PASSWORD (in .env, never committed).
