@@ -48,3 +48,12 @@ data/
 
 # Claude tooling (junctions to coding-brain skills)
 .claude/
+
+# Internal agent/planning files (kept locally, not published)
+AGENTS.md
+CLAUDE.md
+ARCHITECTURE.md
+docs/*.md
+!docs/RULES.md
+!docs/RUNBOOK.md
+!docs/SECURITY.md
