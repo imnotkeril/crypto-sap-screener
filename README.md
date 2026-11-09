@@ -81,14 +81,14 @@ Taken on a local stack with real Binance data (1d scan, 1035 pairs tested, 3 fou
 ├── docker-compose.yml              Full stack: redis, postgres, datalayer, backend, frontend
 ├── docker-compose.datalayer.yml    Data layer with its own redis and postgres
 ├── Dockerfile                      Backend image (also used by the data layer)
-├── Procfile, nixpacks.toml, railway.json, railway.datalayer.json, vercel.json
+├── railway.json, railway.datalayer.json, vercel.json
 ├── package.json                    Root scripts: dev (backend + frontend via concurrently)
 └── pyproject.toml                  Project metadata and ruff/Vercel settings
 ```
 
 ## Quickstart
 
-Requirements: Python 3.11 (the Dockerfile and `runtime.txt` pin 3.11), Node.js 18 or newer (the frontend Docker image uses Node 22), npm.
+Requirements: Python 3.11 (the Dockerfile pins 3.11), Node.js 18 or newer (the frontend Docker image uses Node 22), npm.
 
 ```bash
 # 1. Backend dependencies
@@ -167,7 +167,7 @@ Copy `.env.example` to `backend/.env` (the backend reads `.env` from its working
 | `API_KEY` (frontend dev) | empty | Read by the Vite dev proxy and added to proxied requests (not bundled into the build). |
 | `REDIS_PASSWORD` | none | docker-compose only. Required. |
 | `POSTGRES_PASSWORD` | none | docker-compose only. Required. |
-| `PORT` | `8000` (backend) / `8001` (data layer) | Used by Docker images, Procfile and the data layer entry point. |
+| `PORT` | `8000` (backend) / `8001` (data layer) | Used by Docker images and the data layer entry point. |
 
 Market data layer (`backend/app/data_layer/core/config.py`, not listed in `.env.example`). Each list value must be a JSON array, not a comma-separated string (see Known limitations):
 
@@ -333,7 +333,6 @@ The repository contains configuration for several hosts. None of them has been v
 | File | Target | Status |
 |---|---|---|
 | `Dockerfile` | Docker, Railway (`railway.json` uses the Dockerfile builder) | Compose validated; image build not run here |
-| `Procfile`, `nixpacks.toml` | Heroku-style process, Nixpacks | Present; not run here |
 | `railway.json`, `railway.datalayer.json` | Railway (backend, data layer as a worker) | Present; not run here |
 | `vercel.json`, `backend/serverless_entry.py`, `pyproject.toml` `[tool.vercel]` | Vercel Python runtime with a daily cron on `/api/v1/screener/cron/run` | Present; no long-lived background process exists on this host, so the cron route is the screening trigger |
 | `frontend/vercel.json`, `frontend/nixpacks.toml`, `frontend/railway.json` | Frontend static hosting | Present; the frontend has no server-side API key, so `VITE_API_URL` pointing at a protected API will return 401 |
