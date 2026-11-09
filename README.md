@@ -81,7 +81,7 @@ Taken on a local stack with real Binance data (1d scan, 1035 pairs tested, 3 fou
 ├── docker-compose.yml              Full stack: redis, postgres, datalayer, backend, frontend
 ├── docker-compose.datalayer.yml    Data layer with its own redis and postgres
 ├── Dockerfile                      Backend image (also used by the data layer)
-├── Procfile, nixpacks.toml, railway.json, railway.datalayer.json, vercel.json, RAILWAY_*.md, DEPLOYMENT_NO_DOCKER.md
+├── Procfile, nixpacks.toml, railway.json, railway.datalayer.json, vercel.json
 ├── package.json                    Root scripts: dev (backend + frontend via concurrently)
 └── pyproject.toml                  Project metadata and ruff/Vercel settings
 ```
@@ -337,7 +337,7 @@ The repository contains configuration for several hosts. None of them has been v
 | `railway.json`, `railway.datalayer.json` | Railway (backend, data layer as a worker) | Present; not run here |
 | `vercel.json`, `backend/serverless_entry.py`, `pyproject.toml` `[tool.vercel]` | Vercel Python runtime with a daily cron on `/api/v1/screener/cron/run` | Present; no long-lived background process exists on this host, so the cron route is the screening trigger |
 | `frontend/vercel.json`, `frontend/nixpacks.toml`, `frontend/railway.json` | Frontend static hosting | Present; the frontend has no server-side API key, so `VITE_API_URL` pointing at a protected API will return 401 |
-| `DEPLOYMENT_NO_DOCKER.md`, `RAILWAY_DEPLOYMENT.md`, `RAILWAY_DATALAYER.md`, `docs/RUNBOOK.md` | Operating notes | See `docs/RUNBOOK.md` for the current procedure |
+| `docs/deploy/`, `docs/RUNBOOK.md` | Deployment and operating notes | See `docs/RUNBOOK.md` for the current procedure |
 
 Production checklist: set `API_KEY` and `REQUIRE_AUTH=true`, set `CORS_ORIGINS` to your frontend origin, use PostgreSQL for `DATABASE_URL`, use a TLS proxy, and do not publish the data layer ports.
 
@@ -346,6 +346,7 @@ Production checklist: set `API_KEY` and `REQUIRE_AUTH=true`, set `CORS_ORIGINS` 
 - [`docs/RULES.md`](docs/RULES.md): every rule and formula (cointegration, half-life, Hurst, net edge, composite score, FDR, clustering, Kalman, backtest and metrics).
 - [`docs/SECURITY.md`](docs/SECURITY.md): security review notes and checks. [`SECURITY.md`](SECURITY.md): how to report a vulnerability.
 - [`docs/RUNBOOK.md`](docs/RUNBOOK.md): operating procedures.
+- [`docs/research/`](docs/research/stat-arb-crypto-guide.md): background guide to crypto pairs trading.
 - `/docs` on a running backend: interactive OpenAPI documentation.
 
 ## Known limitations
