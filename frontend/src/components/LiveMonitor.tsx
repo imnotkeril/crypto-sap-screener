@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useQuery } from 'react-query';
+import { useQuery } from '@tanstack/react-query';
 import { LineChart, Line, ResponsiveContainer, YAxis } from 'recharts';
 import { api, LivePairSnapshot } from '../services/api';
 
@@ -19,11 +19,13 @@ const zColor = (z: number, threshold: number) => {
 };
 
 const Sparkline: React.FC<{ assetA: string; assetB: string; active: boolean }> = ({ assetA, assetB, active }) => {
-  const { data } = useQuery(
-    ['live-history', assetA, assetB],
-    () => api.getLivePairHistory(assetA, assetB),
-    { enabled: active, refetchInterval: active ? 5000 : false, staleTime: 4000 }
-  );
+  const { data } = useQuery({
+    queryKey: ['live-history', assetA, assetB],
+    queryFn: () => api.getLivePairHistory(assetA, assetB),
+    enabled: active,
+    refetchInterval: active ? 5000 : false,
+    staleTime: 4000,
+  });
 
   if (!data || data.length < 2) {
     return <div className="text-2xs text-muted-dim px-4 pb-4">Collecting live data…</div>;
@@ -51,11 +53,12 @@ const Sparkline: React.FC<{ assetA: string; assetB: string; active: boolean }> =
 const LiveMonitor: React.FC = () => {
   const [expanded, setExpanded] = useState<string | null>(null);
 
-  const { data: snapshot, isLoading } = useQuery(
-    'live-snapshot',
-    api.getLiveSnapshot,
-    { refetchInterval: 5000, staleTime: 3000 }
-  );
+  const { data: snapshot, isLoading } = useQuery({
+    queryKey: ['live-snapshot'],
+    queryFn: () => api.getLiveSnapshot(),
+    refetchInterval: 5000,
+    staleTime: 3000,
+  });
 
   const pairs = snapshot?.pairs || [];
   const threshold = snapshot?.alert_threshold ?? 2.5;
@@ -110,7 +113,6 @@ const LiveMonitor: React.FC = () => {
                 <th className="px-4 py-2.5 text-left font-medium">Pair</th>
                 <th className="px-4 py-2.5 text-right font-medium">Live z</th>
                 <th className="px-4 py-2.5 text-right font-medium">Daily z</th>
-                <th className="px-4 py-2.5 text-right font-medium">Δ intraday</th>
                 <th className="px-4 py-2.5 text-right font-medium">Price A</th>
                 <th className="px-4 py-2.5 text-right font-medium">Price B</th>
                 <th className="px-4 py-2.5 text-right font-medium">Beta</th>
@@ -136,9 +138,6 @@ const LiveMonitor: React.FC = () => {
                       <td className="px-4 py-2.5 text-right font-mono text-muted">
                         {fmtZ(p.daily_zscore)}
                       </td>
-                      <td className={`px-4 py-2.5 text-right font-mono ${Math.abs(p.zscore_delta) >= 0.5 ? 'text-accent' : 'text-muted'}`}>
-                        {fmtZ(p.zscore_delta)}
-                      </td>
                       <td className="px-4 py-2.5 text-right font-mono text-gray-300">{fmtPrice(p.price_a)}</td>
                       <td className="px-4 py-2.5 text-right font-mono text-gray-300">{fmtPrice(p.price_b)}</td>
                       <td className="px-4 py-2.5 text-right font-mono text-muted">{p.beta.toFixed(3)}</td>
@@ -160,7 +159,7 @@ const LiveMonitor: React.FC = () => {
                     </tr>
                     {isExpanded && (
                       <tr className="border-b border-dark-divider last:border-b-0 bg-dark-bg/40">
-                        <td colSpan={8}>
+                        <td colSpan={7}>
                           <Sparkline assetA={p.asset_a} assetB={p.asset_b} active={isExpanded} />
                         </td>
                       </tr>

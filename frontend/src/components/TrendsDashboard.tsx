@@ -1,20 +1,20 @@
 import React from 'react';
-import { useQuery } from 'react-query';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
+import { useQuery } from '@tanstack/react-query';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { api } from '../services/api';
 
 const TrendsDashboard: React.FC = () => {
-  const { data: trendsData, isLoading: trendsLoading } = useQuery(
-    'trends',
-    () => api.getTrends(),
-    { refetchInterval: 30000 }
-  );
+  const { data: trendsData, isLoading: trendsLoading } = useQuery({
+    queryKey: ['trends'],
+    queryFn: () => api.getTrends(),
+    refetchInterval: 30000,
+  });
 
-  const { data: comparisonData, isLoading: comparisonLoading } = useQuery(
-    'comparison',
-    () => api.getComparison(),
-    { refetchInterval: 30000 }
-  );
+  const { isLoading: comparisonLoading } = useQuery({
+    queryKey: ['comparison'],
+    queryFn: () => api.getComparison(),
+    refetchInterval: 30000,
+  });
 
   if (trendsLoading || comparisonLoading) {
     return (
@@ -26,7 +26,6 @@ const TrendsDashboard: React.FC = () => {
   }
 
   const trends = trendsData || {};
-  const comparison = comparisonData || { changes: [] };
 
   // Format trends data for charts
   const pairsCountData = (trends.total_pairs_trend || []).map((point: any) => ({

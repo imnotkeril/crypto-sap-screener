@@ -2,8 +2,9 @@
 Data loader for fetching cryptocurrency price data from Binance
 """
 import ccxt
+import logging
 import pandas as pd
-from datetime import datetime, timedelta
+import re
 from typing import Optional, List, Dict
 from sqlalchemy.orm import Session
 from app.database import PriceDataCache
@@ -11,6 +12,8 @@ from app.config import settings
 import time
 
 # Candle timeframes supported for screening, mapped to their duration in milliseconds
+SYMBOL_RE = re.compile(r"^[A-Za-z0-9]{1,20}$")
+
 TIMEFRAME_MS: Dict[str, int] = {
     '1m': 60 * 1000,
     '5m': 5 * 60 * 1000,
@@ -26,8 +29,41 @@ def bars_for_lookback(days: int, timeframe: str) -> int:
     candle_ms = TIMEFRAME_MS.get(timeframe, TIMEFRAME_MS['1d'])
     return max(1, int(days * TIMEFRAME_MS['1d'] // candle_ms))
 import threading
-import pickle
+import json
 from pathlib import Path
+
+
+def load_series_file(path) -> pd.Series:
+    """Read a cached price series (data-only JSON; replaces pickle, which can execute code)."""
+    with open(path, 'r', encoding='utf-8') as f:
+        d = json.load(f)
+    return pd.Series(d['values'], index=pd.to_datetime(d['index'], unit='ms'), dtype=float)
+
+
+def save_series_file(series: pd.Series, path) -> None:
+    idx = pd.DatetimeIndex(series.index)
+    payload = {'index': [int(t.value // 1_000_000) for t in idx], 'values': [float(v) for v in series.values]}
+    with open(path, 'w', encoding='utf-8') as f:
+        json.dump(payload, f)
+
+
+def is_series_fresh(series: pd.Series, timeframe: str, now_ms: Optional[float] = None) -> bool:
+    """True if `series` already contains the latest *closed* candle for `timeframe`.
+
+    Cached prices are otherwise reused forever (R-10); a series whose last bar is older
+    than one full candle behind the last closed bar is stale and must be refetched.
+    """
+    if series is None or len(series) == 0:
+        return False
+    candle_ms = TIMEFRAME_MS.get(timeframe, TIMEFRAME_MS['1d'])
+    now_ms = time.time() * 1000 if now_ms is None else now_ms
+    last_closed_open = (int(now_ms) // candle_ms) * candle_ms - candle_ms
+    last_bar = pd.Timestamp(series.index[-1])
+    last_ms = last_bar.value // 1_000_000 if last_bar.tzinfo is None else last_bar.tz_convert('UTC').value // 1_000_000
+    return last_ms >= last_closed_open
+
+
+logger = logging.getLogger(__name__)
 
 
 class DataLoader:
@@ -233,16 +269,17 @@ class DataLoader:
                     # Single request
                     since = self.exchange.milliseconds() - (num_candles * candle_ms)
                     # Log request details for debugging
-                    if symbol in ['1000SHIB', 'SHIB', 'GALA'] or days > 200:
-                        print(f"  DEBUG {symbol}: Requesting {num_candles} {timeframe} candles, since={since} ({(self.exchange.milliseconds() - since) / (24*60*60*1000):.1f} days ago)")
-                    ohlcv = self.exchange.fetch_ohlcv(symbol_pair, timeframe, since=since)
-                    if symbol in ['1000SHIB', 'SHIB', 'GALA'] or days > 200:
-                        print(f"  DEBUG {symbol}: Received {len(ohlcv) if ohlcv else 0} candles from API")
+                    # Explicit limit: without it Binance returns only 500 candles, which made
+                    # 5m/1m lookbacks look like 'insufficient data'.
+                    ohlcv = self.exchange.fetch_ohlcv(
+                        symbol_pair, timeframe, since=since,
+                        limit=min(num_candles + 5, max_candles_per_request)
+                    )
                 else:
                     # Multiple requests needed for > 1000 candles
                     # Binance returns data from 'since' to now, max 1000 candles
                     # Strategy: fetch batches going backwards in time
-                    all_ohlcv = []
+                    all_ohlcv: list = []
                     now_ms = self.exchange.milliseconds()
                     batches_needed = (num_candles + 999) // 1000  # Round up
 
@@ -263,7 +300,7 @@ class DataLoader:
                                 limit=max_candles_per_request
                             )
                         except Exception as e:
-                            print(f"Error fetching batch {batch_num + 1}/{batches_needed} for {symbol}: {e}")
+                            logger.info(f"Error fetching batch {batch_num + 1}/{batches_needed} for {symbol}: {e}")
                             break
 
                         if not batch_ohlcv:
@@ -305,6 +342,10 @@ class DataLoader:
                     if len(ohlcv) > num_candles:
                         ohlcv = ohlcv[-num_candles:]
 
+                # Drop the still-forming candle: its close is not final (lookahead/flicker).
+                now_ms = self.exchange.milliseconds()
+                ohlcv = [c for c in (ohlcv or []) if c[0] + candle_ms <= now_ms]
+
                 if not ohlcv:
                     return pd.DataFrame()
 
@@ -314,15 +355,10 @@ class DataLoader:
                 df = df[['open', 'high', 'low', 'close', 'volume']]
 
                 # Log date range for debugging
-                if symbol in ['1000SHIB', 'SHIB', 'GALA'] or days > 200:
-                    if len(df) > 0:
-                        print(f"  DEBUG {symbol}: Data range: {df.index[0]} to {df.index[-1]} ({len(df)} candles)")
 
                 # Ensure we have exactly 'num_candles' candles (most recent)
                 if len(df) > num_candles:
                     df = df.tail(num_candles)
-                    if symbol in ['1000SHIB', 'SHIB', 'GALA'] or days > 200:
-                        print(f"  DEBUG {symbol}: Trimmed to {len(df)} candles (most recent {num_candles})")
 
                 # Cache in database (daily candles only - PriceDataCache is keyed by date)
                 if db and timeframe == '1d':
@@ -339,40 +375,40 @@ class DataLoader:
                             )
                             db.merge(price_data)  # Use merge to handle duplicates
                         db.commit()
-                    except Exception as db_error:
+                    except Exception:
                         # Database error is not critical
                         pass
                 
                 return df
                 
-            except ccxt.RateLimitExceeded as e:
+            except ccxt.RateLimitExceeded:
                 if attempt < max_retries - 1:
                     wait_time = retry_delay * (attempt + 1) * 5  # Longer wait for rate limit
-                    print(f"Rate limit hit for {symbol}, waiting {wait_time}s before retry...")
+                    logger.info(f"Rate limit hit for {symbol}, waiting {wait_time}s before retry...")
                     time.sleep(wait_time)
                 else:
-                    print(f"Rate limit exceeded for {symbol} after {max_retries} attempts. IP may be temporarily banned.")
+                    logger.info(f"Rate limit exceeded for {symbol} after {max_retries} attempts. IP may be temporarily banned.")
                     return pd.DataFrame()
             except Exception as e:
                 error_msg = str(e)
                 # Check for geographic restriction (451) - don't retry
                 if '451' in error_msg or 'restricted location' in error_msg.lower() or 'Eligibility' in error_msg:
                     if attempt == 0:  # Only print once
-                        print(f"⚠️  Binance API unavailable from your location (geographic restriction). Cannot fetch data for {symbol}.")
+                        logger.info(f"⚠️  Binance API unavailable from your location (geographic restriction). Cannot fetch data for {symbol}.")
                     return pd.DataFrame()  # Don't retry for geographic restrictions
                 # Check if it's a rate limit error (418 or -1003) or IP ban
                 elif '418' in error_msg or '-1003' in error_msg or 'rate limit' in error_msg.lower() or 'banned' in error_msg.lower():
                     if attempt < max_retries - 1:
                         wait_time = retry_delay * (attempt + 1) * 10  # Much longer wait for IP ban
-                        print(f"Rate limit/IP ban error for {symbol}, waiting {wait_time}s before retry...")
+                        logger.info(f"Rate limit/IP ban error for {symbol}, waiting {wait_time}s before retry...")
                         time.sleep(wait_time)
                     else:
-                        print(f"Rate limit/IP ban exceeded for {symbol} after {max_retries} attempts. Please wait before trying again.")
+                        logger.info(f"Rate limit/IP ban exceeded for {symbol} after {max_retries} attempts. Please wait before trying again.")
                         return pd.DataFrame()
                 else:
                     # Only print error once per symbol to avoid log spam
                     if symbol not in self._failed_symbols:
-                        print(f"Error fetching data for {symbol}: {e}")
+                        logger.info(f"Error fetching data for {symbol}: {e}")
                         self._failed_symbols.add(symbol)
                     return pd.DataFrame()
         
@@ -391,10 +427,15 @@ class DataLoader:
         Returns:
             Series with dates as index and prices as values
         """
+        if not SYMBOL_RE.match(symbol or ""):
+            # symbol becomes a cache filename (path traversal / pickle load): refuse anything odd
+            return pd.Series(dtype=float)
         expected_bars = bars_for_lookback(days, timeframe)
         cache_key = f"{symbol}_{days}" if timeframe == '1d' else f"{symbol}_{timeframe}_{days}"
-        cache_file = self._cache_dir / f"{cache_key.replace('/', '_')}.pkl"
+        cache_file = self._cache_dir / f"{cache_key.replace('/', '_')}.json"
         insufficient_key = symbol if timeframe == '1d' else f"{symbol}_{timeframe}"
+        if not cache_file.resolve().is_relative_to(self._cache_dir.resolve()):
+            return pd.Series(dtype=float)
 
         # 0. Quick check: if we know this symbol has insufficient data, return early
         if insufficient_key in self._insufficient_data_symbols:
@@ -408,9 +449,9 @@ class DataLoader:
         with self._cache_lock:
             if cache_key in self._price_cache:
                 cached_series = self._price_cache[cache_key]
-                if len(cached_series) >= expected_bars * 0.8:  # At least 80% of requested bars
+                if len(cached_series) >= expected_bars * 0.8 and is_series_fresh(cached_series, timeframe):
                     return cached_series.copy()
-                # Remove from cache if insufficient data
+                # Remove from cache if insufficient or stale
                 del self._price_cache[cache_key]
         
         # 2. Get lock for this specific symbol/days to prevent duplicate requests
@@ -425,22 +466,21 @@ class DataLoader:
             with self._cache_lock:
                 if cache_key in self._price_cache:
                     cached_series = self._price_cache[cache_key]
-                    if len(cached_series) >= expected_bars * 0.8:  # At least 80% of requested bars
+                    if len(cached_series) >= expected_bars * 0.8 and is_series_fresh(cached_series, timeframe):
                         return cached_series.copy()
             # Double-check cache after acquiring lock (another thread might have loaded it)
             with self._cache_lock:
                 if cache_key in self._price_cache:
                     cached_series = self._price_cache[cache_key]
-                    if len(cached_series) >= expected_bars * 0.8:
+                    if len(cached_series) >= expected_bars * 0.8 and is_series_fresh(cached_series, timeframe):
                         return cached_series.copy()
 
             # 4. Check file cache (persistent across restarts)
             if cache_file.exists():
                 try:
-                    with open(cache_file, 'rb') as f:
-                        price_series = pickle.load(f)
+                    price_series = load_series_file(cache_file)
 
-                    if len(price_series) >= expected_bars * 0.8:
+                    if len(price_series) >= expected_bars * 0.8 and is_series_fresh(price_series, timeframe):
                         # Load into memory cache for faster access
                         with self._cache_lock:
                             self._price_cache[cache_key] = price_series.copy()
@@ -471,18 +511,17 @@ class DataLoader:
                 
                 try:
                     # Log the request
-                    print(f"Fetching {bars_for_lookback(days, timeframe)} {timeframe} candles ({days} days) for {symbol}...")
+                    logger.info(f"Fetching {bars_for_lookback(days, timeframe)} {timeframe} candles ({days} days) for {symbol}...")
                     df = self.fetch_ohlcv(symbol, days, db, timeframe=timeframe)
                     self._last_request_time = time.time()
                     
                     if df.empty:
-                        print(f"⚠️  Warning: No data returned from API for {symbol}")
+                        logger.info(f"⚠️  Warning: No data returned from API for {symbol}")
                         # Try to return from file cache even if API failed
                         if cache_file.exists():
                             try:
-                                with open(cache_file, 'rb') as f:
-                                    price_series = pickle.load(f)
-                                print(f"  → Using cached data for {symbol}: {len(price_series)} days (requested {days})")
+                                price_series = load_series_file(cache_file)
+                                logger.info(f"  → Using cached data for {symbol}: {len(price_series)} days (requested {days})")
                                 return price_series
                             except Exception:
                                 pass
@@ -495,20 +534,19 @@ class DataLoader:
 
                     # Verify we got enough data
                     if bars_received < expected_bars * 0.8:
-                        print(f"⚠️  Warning: Only got {bars_received} {timeframe} candles for {symbol}, requested {expected_bars}")
-                        print(f"  → Possible reasons: asset recently listed, API error, or insufficient historical data")
+                        logger.info(f"⚠️  Warning: Only got {bars_received} {timeframe} candles for {symbol}, requested {expected_bars}")
+                        logger.info("  → Possible reasons: asset recently listed, API error, or insufficient historical data")
                         # Cache this to avoid repeated requests
                         self._insufficient_data_symbols[insufficient_key] = bars_received
                         # Still return the data we have (might be useful for some pairs)
                     elif bars_received < expected_bars:
-                        print(f"  ✓ Got {bars_received} {timeframe} candles for {symbol} (requested {expected_bars}, missing {expected_bars - bars_received})")
+                        logger.info(f"  ✓ Got {bars_received} {timeframe} candles for {symbol} (requested {expected_bars}, missing {expected_bars - bars_received})")
                     else:
-                        print(f"  ✓ Successfully fetched {bars_received} {timeframe} candles for {symbol}")
+                        logger.info(f"  ✓ Successfully fetched {bars_received} {timeframe} candles for {symbol}")
                     
                     # 6. Save to file cache (persistent)
                     try:
-                        with open(cache_file, 'wb') as f:
-                            pickle.dump(price_series, f)
+                        save_series_file(price_series, cache_file)
                     except Exception:
                         # Non-critical if file cache fails
                         pass
@@ -524,13 +562,12 @@ class DataLoader:
                     
                     return price_series
                 except Exception as e:
-                    print(f"Error loading price series for {symbol}: {e}")
+                    logger.info(f"Error loading price series for {symbol}: {e}")
                     # Try to return from file cache even if API failed
                     if cache_file.exists():
                         try:
-                            with open(cache_file, 'rb') as f:
-                                price_series = pickle.load(f)
-                            print(f"Using cached data for {symbol}: {len(price_series)} days (requested {days})")
+                            price_series = load_series_file(cache_file)
+                            logger.info(f"Using cached data for {symbol}: {len(price_series)} days (requested {days})")
                             return price_series
                         except Exception:
                             pass
@@ -539,7 +576,7 @@ class DataLoader:
                     with self._cache_lock:
                         if cache_key in self._price_cache:
                             cached = self._price_cache[cache_key].copy()
-                            print(f"Using in-memory cache for {symbol}: {len(cached)} days (requested {days})")
+                            logger.info(f"Using in-memory cache for {symbol}: {len(cached)} days (requested {days})")
                             return cached
                     
                     return pd.Series(dtype=float)
@@ -577,7 +614,7 @@ class DataLoader:
         if symbol and days:
             # Clear specific file
             cache_key = f"{symbol}_{days}"
-            cache_file = self._cache_dir / f"{cache_key.replace('/', '_')}.pkl"
+            cache_file = self._cache_dir / f"{cache_key.replace('/', '_')}.json"
             if cache_file.exists():
                 try:
                     cache_file.unlink()
@@ -585,7 +622,7 @@ class DataLoader:
                     pass
         elif symbol:
             # Clear all files for this symbol
-            pattern = f"{symbol.replace('/', '_')}_*.pkl"
+            pattern = f"{symbol.replace('/', '_')}_*.json"
             for cache_file in self._cache_dir.glob(pattern):
                 try:
                     cache_file.unlink()
@@ -593,7 +630,7 @@ class DataLoader:
                     pass
         elif days:
             # Clear all files for this days value
-            pattern = f"*_{days}.pkl"
+            pattern = f"*_{days}.json"
             for cache_file in self._cache_dir.glob(pattern):
                 try:
                     cache_file.unlink()
@@ -601,7 +638,7 @@ class DataLoader:
                     pass
         else:
             # Clear all cache files
-            for cache_file in self._cache_dir.glob("*.pkl"):
+            for cache_file in self._cache_dir.glob("*.json"):
                 try:
                     cache_file.unlink()
                 except Exception:

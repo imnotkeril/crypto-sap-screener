@@ -73,7 +73,7 @@ class PostgresStore:
         await self._ensure_schema()
 
     async def _ensure_schema(self):
-        async with self._pool.acquire() as conn:
+        async with self._require_pool().acquire() as conn:
             await conn.execute(CREATE_TABLE_SQL)
             await conn.execute(CREATE_INDEX_SQL)
             try:
@@ -83,12 +83,17 @@ class PostgresStore:
             except Exception as e:
                 logger.info(f"TimescaleDB not available, using plain table: {e}")
 
+    def _require_pool(self) -> 'asyncpg.Pool':
+        if self._pool is None:
+            raise RuntimeError('PostgresStore not connected')
+        return self._pool
+
     async def close(self):
         if self._pool:
             await self._pool.close()
 
     async def get_last_timestamp(self, symbol: str, exchange: str, timeframe: str) -> Optional[datetime]:
-        async with self._pool.acquire() as conn:
+        async with self._require_pool().acquire() as conn:
             row = await conn.fetchrow(
                 """
                 SELECT max("timestamp") AS ts FROM data_layer_candles
@@ -108,7 +113,7 @@ class PostgresStore:
             (c.symbol, c.exchange, c.timeframe, c.timestamp, c.open, c.high, c.low, c.close, c.volume, c.trades)
             for c in candles
         ]
-        async with self._pool.acquire() as conn:
+        async with self._require_pool().acquire() as conn:
             await conn.executemany(UPSERT_SQL, rows)
 
     async def get_candles(
@@ -134,6 +139,6 @@ class PostgresStore:
         if limit:
             query += f" LIMIT {int(limit)}"
 
-        async with self._pool.acquire() as conn:
+        async with self._require_pool().acquire() as conn:
             rows = await conn.fetch(query, *params)
         return [dict(row) for row in rows]

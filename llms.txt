@@ -1,0 +1,8 @@
+# Statistical Arbitrage Pairs Screener
+
+> Crypto pairs screener (cointegration, half-life, Kalman live monitor) with a backtester. Research tool, not investment advice; never places orders.
+
+- [README](README.md): setup, configuration, API overview
+- [Architecture](ARCHITECTURE.md)
+- [Runbook](docs/RUNBOOK.md): start/stop, backups, stale data
+- [Security](docs/SECURITY.md)

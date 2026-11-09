@@ -4,7 +4,9 @@ Pydantic schemas for API requests and responses
 from pydantic import BaseModel, Field, field_validator
 from typing import Optional, List
 from datetime import datetime
+import re
 
+ASSET_SYMBOL_RE = re.compile(r"^[A-Z0-9]{1,20}$")
 VALID_TIMEFRAMES = {'1m', '5m', '15m', '1h', '4h', '1d'}
 
 
@@ -18,6 +20,27 @@ class ScreeningConfigRequest(BaseModel):
     max_adf_pvalue: float = Field(default=0.10, ge=0.0, le=1.0)
     include_hurst: bool = False
     min_volume_usd: float = Field(default=1_000_000, ge=0, description="Minimum daily volume in USD")
+    min_half_life: Optional[float] = Field(default=1.0, ge=0, le=10_000)
+    max_half_life: Optional[float] = Field(default=None, ge=0, le=10_000)
+    use_fdr: bool = False
+    use_clustering: bool = False
+    cluster_distance: float = Field(default=0.5, ge=0.0, le=2.0)
+    taker_fee_bps: float = Field(default=5.0, ge=0, le=500)
+    slippage_bps: float = Field(default=2.0, ge=0, le=500)
+    funding_bps_per_8h: float = Field(default=1.0, ge=-100, le=100)
+    entry_zscore: float = Field(default=2.0, ge=0.5, le=10)
+
+    @field_validator('assets')
+    @classmethod
+    def validate_assets(cls, v):
+        if v is None:
+            return v
+        if len(v) > 500:
+            raise ValueError("too many assets")
+        out = [a.strip().upper() for a in v]
+        if any(not ASSET_SYMBOL_RE.match(a) for a in out):
+            raise ValueError("asset symbols must match ^[A-Z0-9]{1,20}$")
+        return out
 
     @field_validator('timeframe')
     @classmethod
@@ -35,9 +58,12 @@ class PairResult(BaseModel):
     correlation: float
     adf_pvalue: float
     adf_statistic: float
+    adf_pvalue_fdr: Optional[float] = None
     beta: float
     spread_std: float
     hurst_exponent: Optional[float] = None
+    half_life: Optional[float] = None
+    expected_net_edge_pct: Optional[float] = None
     screening_date: datetime
     lookback_days: int
     timeframe: Optional[str] = None

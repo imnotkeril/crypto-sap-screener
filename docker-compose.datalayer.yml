@@ -1,5 +1,3 @@
-version: "3.8"
-
 # Local/self-hosted run of the Market Data Layer (backend/app/data_layer).
 #
 # Usage:
@@ -10,26 +8,29 @@ version: "3.8"
 #   - postgres  (historical candle storage)
 #   - datalayer (the ingestion + serving service, http://localhost:8001)
 #
+# Requires REDIS_PASSWORD and POSTGRES_PASSWORD in .env. Ports bind to 127.0.0.1 only.
+# Overlaps with docker-compose.yml (same ports/services): use ONE of the two.
 # Health check: curl http://localhost:8001/health
 
 services:
   redis:
-    image: redis:7-alpine
+    image: redis:7.4-alpine
+    command: ["redis-server", "--requirepass", "${REDIS_PASSWORD:?set REDIS_PASSWORD in .env}"]
     restart: unless-stopped
     ports:
-      - "6379:6379"
+      - "127.0.0.1:6379:6379"
     volumes:
       - datalayer-redis:/data
 
   postgres:
-    image: postgres:15-alpine
+    image: postgres:15.10-alpine
     restart: unless-stopped
     environment:
       POSTGRES_USER: datalayer
-      POSTGRES_PASSWORD: datalayer
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
       POSTGRES_DB: datalayer
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     volumes:
       - datalayer-postgres:/var/lib/postgresql/data
 
@@ -42,14 +43,14 @@ services:
     working_dir: /app/backend
     environment:
       PORT: "8001"
-      REDIS_URL: redis://redis:6379
-      DATABASE_URL: postgresql://datalayer:datalayer@postgres:5432/datalayer
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379
+      DATABASE_URL: postgresql://datalayer:${POSTGRES_PASSWORD}@postgres:5432/datalayer
       # Optional overrides:
       # DATALAYER_SYMBOLS: BTC/USDT,ETH/USDT,SOL/USDT
       # DATALAYER_TIMEFRAMES: 1m,5m,15m,1h,4h,1d
       # DATALAYER_HISTORY_START: "2023-01-01"
     ports:
-      - "8001:8001"
+      - "127.0.0.1:8001:8001"
     depends_on:
       - redis
       - postgres

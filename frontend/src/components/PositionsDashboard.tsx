@@ -1,10 +1,12 @@
 import React from 'react';
-import { useQuery } from 'react-query';
+import { useQuery } from '@tanstack/react-query';
 import { api } from '../services/api';
 import PositionCard from './PositionCard';
 
 const PositionsDashboard: React.FC = () => {
-  const { data, refetch } = useQuery('positions', () => api.getPositions(), {
+  const { data, refetch } = useQuery({
+    queryKey: ['positions'],
+    queryFn: () => api.getPositions(),
     refetchInterval: 5000,
   });
 

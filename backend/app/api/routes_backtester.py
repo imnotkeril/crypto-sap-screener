@@ -2,9 +2,11 @@
 FastAPI routes for backtesting
 """
 from fastapi import APIRouter, HTTPException, Depends
-from typing import Optional, Literal
+from typing import Any, Optional, Literal
 from datetime import datetime
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
+from app.api.schemas import ASSET_SYMBOL_RE
+from app.api.security import heavy_limit
 
 from app.modules.backtester.backtester import Backtester
 from app.modules.backtester.strategy import ZScoreStrategy
@@ -17,7 +19,7 @@ router = APIRouter()
 logger = logging.getLogger(__name__)
 
 # In-memory storage for backtest sessions (since we're not using DB)
-_backtest_sessions = {}
+_backtest_sessions: dict = {}
 _next_session_id = 1
 
 
@@ -33,15 +35,24 @@ class BacktestRequest(BaseModel):
     initial_capital: float = Field(default=10000.0, gt=0)
     position_size_pct: float = Field(default=100.0, ge=1.0, le=100.0, description="Percentage of capital to use per trade (1-100%)")
     lookback_days: int = Field(default=365, ge=50, le=1000)
+    timeframe: Literal['1m', '5m', '15m', '1h', '4h', '1d'] = '1d'
     beta: Optional[float] = None
     transaction_cost_pct: float = Field(default=0.001, ge=0.0, le=0.05, description="Transaction cost for ALL trades (entry/exit/rebalancing) as % of notional")
     enable_rebalancing: bool = Field(default=False, description="Enable dynamic hedge rebalancing")
     rebalancing_frequency_days: int = Field(default=5, ge=1, le=30, description="Minimum days between rebalances")
     rebalancing_threshold: float = Field(default=0.05, ge=0.01, le=0.5, description="Minimum beta drift % to trigger rebalance")
 
+    @field_validator('asset_a', 'asset_b')
+    @classmethod
+    def validate_symbol(cls, v: str) -> str:
+        v = v.strip().upper()
+        if not ASSET_SYMBOL_RE.match(v):
+            raise ValueError("asset symbols must match ^[A-Z0-9]{1,20}$")
+        return v
 
-@router.post("/run")
-async def run_backtest(request: BacktestRequest, db: Session = Depends(get_db)):
+
+@router.post("/run", dependencies=[Depends(heavy_limit)])
+def run_backtest(request: BacktestRequest, db: Session = Depends(get_db)):
     """Run a backtest for a pair"""
     try:
         strategy = ZScoreStrategy(
@@ -64,6 +75,7 @@ async def run_backtest(request: BacktestRequest, db: Session = Depends(get_db)):
             asset_b=request.asset_b,
             strategy=strategy,
             lookback_days=request.lookback_days,
+            timeframe=request.timeframe,
             beta=request.beta,
             position_size_pct=request.position_size_pct
         )
@@ -87,7 +99,7 @@ async def run_backtest(request: BacktestRequest, db: Session = Depends(get_db)):
                         found.extend(_has_timestamp(item, f"{path}[{i}]"))
                     return found
                 return []
-            timestamp_paths = _has_timestamp(results)
+            _has_timestamp(results)
             
             row = DbBacktestSession(
                 asset_a=request.asset_a,
@@ -129,7 +141,7 @@ async def run_backtest(request: BacktestRequest, db: Session = Depends(get_db)):
         logger.error(f"Error running backtest: {e}")
         import traceback
         traceback.print_exc()
-        raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.get("/results/{session_id}")
@@ -151,7 +163,7 @@ async def get_backtest_results(session_id: int, db: Session = Depends(get_db)):
         raise
     except Exception as e:
         logger.error(f"Error getting backtest results: {e}")
-        raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.get("/sessions")
@@ -162,7 +174,7 @@ async def get_backtest_sessions(db: Session = Depends(get_db)):
             rows = db.query(DbBacktestSession).order_by(DbBacktestSession.created_at.desc()).all()
             sessions = []
             for s in rows:
-                req = s.request or {}
+                req: Any = s.request or {}
                 sessions.append({
                     "id": s.id,
                     "asset_a": s.asset_a,
@@ -175,7 +187,7 @@ async def get_backtest_sessions(db: Session = Depends(get_db)):
                     "take_profit_type": req.get("take_profit_type"),
                     "initial_capital": s.initial_capital,
                     "created_at": s.created_at.isoformat() if s.created_at else None,
-                    "metrics": (s.results or {}).get("metrics", {}),
+                    "metrics": (s.results or {}).get("metrics", {}),  # type: ignore[call-overload]
                 })
             return {"sessions": sessions, "total": len(sessions)}
 
@@ -202,5 +214,5 @@ async def get_backtest_sessions(db: Session = Depends(get_db)):
         }
     except Exception as e:
         logger.error(f"Error getting backtest sessions: {e}")
-        raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Internal server error")
 

@@ -69,39 +69,14 @@ const PairsTable: React.FC<PairsTableProps> = ({ pairs }) => {
     setSpreadData(null);
   };
 
-  const handleExportCSV = async () => {
-    try {
-      const response = await api.exportResultsCSV(filteredAndSortedPairs.length);
-      const blob = new Blob([response], { type: 'text/csv' });
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `pairs_screener_${new Date().toISOString().split('T')[0]}.csv`;
-      document.body.appendChild(a);
-      a.click();
-      window.URL.revokeObjectURL(url);
-      document.body.removeChild(a);
-    } catch (error) {
-      console.error('Error exporting CSV:', error);
-    }
-  };
-
-  const handleExportExcel = async () => {
-    try {
-      const response = await api.exportResultsExcel(filteredAndSortedPairs.length);
-      const blob = new Blob([response], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `pairs_screener_${new Date().toISOString().split('T')[0]}.xlsx`;
-      document.body.appendChild(a);
-      a.click();
-      window.URL.revokeObjectURL(url);
-      document.body.removeChild(a);
-    } catch (error) {
-      console.error('Error exporting Excel:', error);
-    }
-  };
+  useEffect(() => {
+    if (!showModal) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') closeModal();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [showModal]);
 
   const handleSort = (field: SortField) => {
     if (sortField === field) {
@@ -117,8 +92,8 @@ const PairsTable: React.FC<PairsTableProps> = ({ pairs }) => {
     let filtered = pairs.filter(pair => {
       if (pair.correlation < minCorrelation) return false;
       if (pair.adf_pvalue > maxADFPValue) return false;
-      if (minHurst !== null && (pair.hurst_exponent === null || pair.hurst_exponent < minHurst)) return false;
-      if (maxHurst !== null && (pair.hurst_exponent === null || pair.hurst_exponent > maxHurst)) return false;
+      if (minHurst !== null && (pair.hurst_exponent == null || pair.hurst_exponent < minHurst)) return false;
+      if (maxHurst !== null && (pair.hurst_exponent == null || pair.hurst_exponent > maxHurst)) return false;
       if (minZScore !== null && (pair.current_zscore === null || pair.current_zscore === undefined || pair.current_zscore < minZScore)) return false;
       if (maxZScore !== null && (pair.current_zscore === null || pair.current_zscore === undefined || pair.current_zscore > maxZScore)) return false;
       if (minBeta !== null && pair.beta < minBeta) return false;
@@ -405,7 +380,40 @@ const PairsTable: React.FC<PairsTableProps> = ({ pairs }) => {
         )}
       </div>
       
-      <div className="overflow-x-auto">
+      {/* Mobile read view: one card per pair */}
+      <ul className="sm:hidden divide-y divide-[#1a1a24]" aria-label="Pairs">
+        {paginatedPairs.map((pair) => (
+          <li key={pair.id}>
+            <button
+              type="button"
+              onClick={() => handlePairClick(pair)}
+              className="w-full px-4 py-3 text-left hover:bg-[#0a0a0f]/30 focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-400"
+            >
+              <div className="flex items-center justify-between">
+                <span className="text-sm font-medium text-white">
+                  {pair.asset_a} / {pair.asset_b}
+                </span>
+                <span className="text-sm font-bold text-emerald-400">
+                  Score {(pair.composite_score ?? 0).toFixed(0)}
+                </span>
+              </div>
+              <dl className="mt-2 grid grid-cols-3 gap-2 text-xs text-gray-300">
+                <div><dt className="text-gray-400">Corr</dt><dd>{formatNumber(pair.correlation, 2)}</dd></div>
+                <div><dt className="text-gray-400">ADF p</dt><dd>{formatNumber(pair.adf_pvalue)}</dd></div>
+                <div>
+                  <dt className="text-gray-400">Z</dt>
+                  <dd>{pair.current_zscore != null ? formatNumber(pair.current_zscore, 2) : '—'}</dd>
+                </div>
+                <div><dt className="text-gray-400">Half-life</dt><dd>{pair.half_life != null ? formatNumber(pair.half_life, 1) : '—'}</dd></div>
+                <div><dt className="text-gray-400">Net edge %</dt><dd>{pair.expected_net_edge_pct != null ? formatNumber(pair.expected_net_edge_pct, 2) : '—'}</dd></div>
+                <div><dt className="text-gray-400">TF</dt><dd>{pair.timeframe || '1d'}</dd></div>
+              </dl>
+            </button>
+          </li>
+        ))}
+      </ul>
+
+      <div className="hidden sm:block overflow-x-auto">
         <table className="min-w-full divide-y divide-[#1a1a24]">
           <thead className="bg-[#0a0a0f]/50">
             <tr>
@@ -473,6 +481,12 @@ const PairsTable: React.FC<PairsTableProps> = ({ pairs }) => {
                 </div>
               </th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">
+                HL
+              </th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">
+                Net%
+              </th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">
                 Z-Score
               </th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">
@@ -499,8 +513,15 @@ const PairsTable: React.FC<PairsTableProps> = ({ pairs }) => {
               return (
                 <tr 
                   key={pair.id} 
-                  className="hover:bg-[#0a0a0f]/30 transition-colors duration-150 cursor-pointer"
+                  className="hover:bg-[#0a0a0f]/30 transition-colors duration-150 cursor-pointer focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-400"
+                  tabIndex={0}
                   onClick={() => handlePairClick(pair)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      handlePairClick(pair);
+                    }
+                  }}
                 >
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className={`inline-flex items-center justify-center w-12 h-12 rounded-lg border ${getScoreBg(compositeScore)}`}>
@@ -537,6 +558,22 @@ const PairsTable: React.FC<PairsTableProps> = ({ pairs }) => {
                   {pair.hurst_exponent !== null && pair.hurst_exponent !== undefined ? (
                     <span className={pair.hurst_exponent < 0.5 ? 'text-emerald-400' : 'text-gray-400'}>
                       {formatNumber(pair.hurst_exponent)}
+                    </span>
+                  ) : (
+                    <span className="text-gray-600">—</span>
+                  )}
+                </td>
+                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300" title="Mean-reversion half-life (bars)">
+                  {pair.half_life !== null && pair.half_life !== undefined ? (
+                    <span className="text-gray-300">{formatNumber(pair.half_life, 1)}</span>
+                  ) : (
+                    <span className="text-gray-600">—</span>
+                  )}
+                </td>
+                <td className="px-6 py-4 whitespace-nowrap text-sm" title="Expected net edge per round-trip after fees + funding (% of price)">
+                  {pair.expected_net_edge_pct !== null && pair.expected_net_edge_pct !== undefined ? (
+                    <span className={pair.expected_net_edge_pct > 0 ? 'text-emerald-400' : 'text-red-400'}>
+                      {formatNumber(pair.expected_net_edge_pct, 2)}
                     </span>
                   ) : (
                     <span className="text-gray-600">—</span>
@@ -633,6 +670,9 @@ const PairsTable: React.FC<PairsTableProps> = ({ pairs }) => {
           }}
         >
           <div 
+            role="dialog"
+            aria-modal="true"
+            aria-label={`${selectedPair.asset_a} / ${selectedPair.asset_b} spread analysis`}
             className="bg-[#111118] border border-[#1a1a24] rounded-xl max-w-7xl w-full max-h-[95vh] overflow-y-auto shadow-2xl"
             onClick={(e) => e.stopPropagation()}
             style={{ margin: 'auto' }}
@@ -643,6 +683,8 @@ const PairsTable: React.FC<PairsTableProps> = ({ pairs }) => {
               </h2>
               <button
                 onClick={closeModal}
+                aria-label="Close"
+                autoFocus
                 className="text-gray-400 hover:text-white transition-colors"
               >
                 <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
