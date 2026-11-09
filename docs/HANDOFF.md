@@ -1,6 +1,6 @@
 # Handoff
 status: active
-date: 2026-11-05
+date: 2026-11-09
 from-chat-tokens: 300000
 
 ## Goal
@@ -8,9 +8,9 @@ Bring the crypto stat-arb pairs screener (FastAPI + React, finance/screener rout
 
 ## State
 - Done: all 10 review P1, BUG-1/3/5/6/7 (0 xfail left), S-01 (JSON cache, symbol validation), S-02 (nginx allowlist, cron 404 via proxy), S-03, S-07 partial, R-11..R-13, R-15/16, R-18..R-20, scan scheduler + /health freshness, compose hardening, docker E2E smoke, light design review (see docs/STATE.md).
-- Evidence: backend pytest 127 passed, 0 xfail; mypy clean (backend/mypy.ini documents ORM Column overrides); ruff F clean; frontend tsc 0, build ok; docker build of backend+frontend, real Binance scan inside the container (561 pairs tested, 3 found), /health, 401 without key, proxy 200, cron 404, live snapshot with Kalman z verified; pip-audit clean; npm: dev-server-only advisories (vite/esbuild) + react-query chain remain.
+- Evidence: backend pytest 128 passed, 0 xfail; mypy clean (backend/mypy.ini documents ORM Column overrides); ruff F clean; frontend tsc 0, build ok; docker build of backend+frontend, real Binance scan inside the container (561 pairs tested, 3 found), /health, 401 without key, proxy 200, cron 404, live snapshot with Kalman z verified; pip-audit clean; npm: dev-server-only advisories (vite/esbuild) + react-query chain remain.
 - Running: nothing (compose project audit-statarb stopped).
-- Branch: chore/audit, fully pushed (origin/chore/audit = a700c21 as of 2026-11-09). PR #11 is open and mergeable, no CI checks configured on it. Not merged to main, not deployed anywhere (Vercel project `statistical-arbitrage-pairs-screener` exists but the app needs the compose backend, which has no host yet).
+- Branch: chore/audit; origin/chore/audit = 94ca355, local HEAD a0f0ece is NOT pushed (push needs a go). PR #11 is open and mergeable, no CI checks configured on it. Not merged to main, not deployed anywhere (Vercel project `statistical-arbitrage-pairs-screener` exists but the app needs the compose backend, which has no host yet).
 
 ## Decisions
 - beta 70/544 is a price-unit ratio, not a bug; no beta cap at 10 anywhere.
@@ -22,9 +22,8 @@ Bring the crypto stat-arb pairs screener (FastAPI + React, finance/screener rout
 - Scheduler: SCAN_SCHEDULER_ENABLED (compose true), one attempt per SCAN_INTERVAL_SECONDS; /health 503 when last scan older than 2x interval.
 
 ## Next
-1. Full design-reviewer gate with Playwright (docs/DESIGN_REVIEW.md is partial): keyboard, motion, Live monitor, Trends, pair detail; add a `<main>` landmark, mobile card layout for the pairs table.
-2. Leftovers: R-14 (zscore_delta), R-15 backtester timeframe, R-17 stronger FDR test, BUG-2/4/8 (low), S-04 cost bounds, S-06, react-query v5, vite 7.
-3. Release (owner-dependent): B1 history purge, B6 secrets/domain/TLS/CORS, B8 stale deploy files after host choice, Postgres dump/restore and datalayer container test, LICENSE.
+1. Everything doable without the owner is finished (commit a0f0ece, local only, not pushed): design gate, leftovers, S-04/S-06, vite 7, react-query v5. Remaining low: BUG-2, cointegration prints / duplicate OLS, saved Playwright screenshots.
+2. Owner-dependent release: see docs/OWNER_STEPS.md (merge PR #11, host, secrets, TLS, auth in front, alerts channel, LICENSE, history purge). Then B8 stale deploy files, Postgres dump/restore and datalayer container test.
 
 ## Open questions
 - Secrets: API_KEY, CRON_SECRET, REDIS_PASSWORD, POSTGRES_PASSWORD (.env, never in chat).

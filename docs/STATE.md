@@ -22,10 +22,9 @@ On a rate-limit cut or new session: read this file, then docs/plan.md, continue 
 - [x] docs - README rewritten from real code (tech-writer), PROGRESS.md merged below
 
 ## Next
-- [ ] Full design-reviewer gate with Playwright (docs/DESIGN_REVIEW.md is partial), `<main>` landmark, mobile card layout for the pairs table
-- [ ] REVIEW leftovers: R-14 zscore_delta mixes statistics, R-15 backtester ignores timeframe, R-17 weak FDR assertion, cointegration prints / duplicate OLS; BUG-2/4/8 low
+- [x] 2026-11-09: design gate run in the built-in browser (`<main>`, row keyboard access, dialog + Escape, mobile card list, focus-visible, reduced motion); R-14 (zscore_delta dropped), R-15 (backtester `timeframe`, Sharpe annualised per bar size), R-17 (BH bound asserted), BUG-4 (idempotent alert create), BUG-8 (exit cost on exit notional), S-04 (`heavy_limit` + sync handlers), S-06 (Dockerfile REQUIRE_AUTH=true, startup warning), vite 7, @tanstack/react-query v5, npm audit 0; 128 passed, mypy/ruff/tsc clean
+- [ ] Leftover low: BUG-2, cointegration prints / duplicate OLS; no Playwright MCP in the project (gate done with the built-in browser, no saved screenshots)
 - [ ] Release: B1 history purge (owner yes), B6 secrets/domain/TLS/CORS (owner), B8 remove stale deploy files after host choice, Postgres dump/restore test, datalayer container E2E, LICENSE (owner)
-- [ ] S-04 request cost bounds, S-06 open API when API_KEY unset, react-query v3 -> v5, vite 7 (peer conflict)
 
 ## Needed from owner
 - Values for API_KEY, CRON_SECRET, REDIS_PASSWORD, POSTGRES_PASSWORD (in .env, never committed).

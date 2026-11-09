@@ -13,4 +13,5 @@
 - [x] T11 README/.env.example/docs, audit "After fixes"
 - [x] T12 framework docs: REVIEW/QA/SECURITY/RUNBOOK/RELEASE_CHECKLIST/RULES + README rewrite (agents: reviewer, qa-tester, security-reviewer, devops, tech-writer)
 - [x] T13 fix REVIEW.md P1 findings (R-01..R-10) - 2026-11-03, 112 passed
+- [x] T15 design gate a11y + mobile cards; S-04, S-06, R-14/15/17, BUG-4/8; vite 7, react-query v5 (2026-11-09, commit a0f0ece)
 - [~] T14 scheduler + /health last-scan done (B2/B3); SECURITY.md findings not re-checked
