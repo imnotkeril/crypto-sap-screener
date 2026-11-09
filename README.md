@@ -74,7 +74,7 @@ Taken on a local stack with real Binance data (1d scan, 1035 pairs tested, 3 fou
 │   ├── vite.config.ts              Dev server on 5173, /api proxy to the backend
 │   ├── nginx.conf.template         Production proxy used by the frontend Docker image
 │   └── Dockerfile
-├── docs/                           RULES.md, QA.md, SECURITY.md, RUNBOOK.md, plan/state files, img/ (screenshots)
+├── docs/                           RULES.md, SECURITY.md, RUNBOOK.md, img/ (screenshots)
 ├── .github/workflows/ci.yml        CI: backend tests + ruff, frontend typecheck and build
 ├── LICENSE, SECURITY.md            MIT license, vulnerability reporting policy
 ├── .env.example                    Every variable the backend reads (names and comments only)
@@ -291,7 +291,7 @@ There is no `/llms.txt` endpoint yet. See Known limitations.
 
 ## Database and migrations
 
-- The default database is SQLite at `backend/data/stat_arb.db`. The directory is created on demand. It is git-ignored, but a copy of it was committed in earlier history (see `docs/STATE.md`).
+- The default database is SQLite at `backend/data/stat_arb.db`. The directory is created on demand. It is git-ignored, but a copy of it was committed in earlier history.
 - `init_db()` runs at startup and creates tables with SQLAlchemy `create_all`. An additive `_ensure_columns` step adds missing columns to existing tables. It never drops or renames anything.
 - **There are no migrations.** Alembic is listed in `requirements.txt` but no migration directory or configuration exists. Schema changes beyond additive columns need a manual plan. Back up the database file before upgrading.
 - For PostgreSQL, set `DATABASE_URL=postgresql://user:pass@host:5432/db`. The same additive rules apply.
@@ -344,14 +344,13 @@ Production checklist: set `API_KEY` and `REQUIRE_AUTH=true`, set `CORS_ORIGINS` 
 ## Documentation
 
 - [`docs/RULES.md`](docs/RULES.md): every rule and formula (cointegration, half-life, Hurst, net edge, composite score, FDR, clustering, Kalman, backtest and metrics).
-- [`docs/QA.md`](docs/QA.md): QA scope and results.
 - [`docs/SECURITY.md`](docs/SECURITY.md): security review notes and checks. [`SECURITY.md`](SECURITY.md): how to report a vulnerability.
 - [`docs/RUNBOOK.md`](docs/RUNBOOK.md): operating procedures.
 - `/docs` on a running backend: interactive OpenAPI documentation.
 
 ## Known limitations
 
-**Status.** The independent review ([`docs/REVIEW.md`](docs/REVIEW.md)) found no P0 and ten P1 issues; all ten are fixed with tests, along with most P2 items. Open items are tracked in [`docs/REVIEW.md`](docs/REVIEW.md), [`docs/QA.md`](docs/QA.md) and [`docs/SECURITY.md`](docs/SECURITY.md). This is a research tool, not a hardened production service.
+**Status.** All ten P1 issues from the independent review are fixed with tests, along with most P2 items. This is a research tool, not a hardened production service.
 
 Other known gaps:
 
