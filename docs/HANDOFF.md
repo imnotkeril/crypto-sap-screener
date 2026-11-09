@@ -10,7 +10,7 @@ Bring the crypto stat-arb pairs screener (FastAPI + React, finance/screener rout
 - Done: all 10 review P1, BUG-1/3/5/6/7 (0 xfail left), S-01 (JSON cache, symbol validation), S-02 (nginx allowlist, cron 404 via proxy), S-03, S-07 partial, R-11..R-13, R-15/16, R-18..R-20, scan scheduler + /health freshness, compose hardening, docker E2E smoke, light design review (see docs/STATE.md).
 - Evidence: backend pytest 127 passed, 0 xfail; mypy clean (backend/mypy.ini documents ORM Column overrides); ruff F clean; frontend tsc 0, build ok; docker build of backend+frontend, real Binance scan inside the container (561 pairs tested, 3 found), /health, 401 without key, proxy 200, cron 404, live snapshot with Kalman z verified; pip-audit clean; npm: dev-server-only advisories (vite/esbuild) + react-query chain remain.
 - Running: nothing (compose project audit-statarb stopped).
-- Branch: chore/audit. Commits after 5f883ab were NOT pushed by this session (the push was blocked by the permission classifier); check `git status -sb` and push to chore/audit if allowed.
+- Branch: chore/audit, fully pushed (origin/chore/audit = a700c21 as of 2026-11-09). PR #11 is open and mergeable, no CI checks configured on it. Not merged to main, not deployed anywhere (Vercel project `statistical-arbitrage-pairs-screener` exists but the app needs the compose backend, which has no host yet).
 
 ## Decisions
 - beta 70/544 is a price-unit ratio, not a bug; no beta cap at 10 anywhere.
