@@ -1,4 +1,9 @@
-# Statistical Arbitrage Pairs Screener
+# Statistical Arbitrage Pairs Screener (crypto-sap-screener)
+
+[![CI](https://github.com/imnotkeril/crypto-sap-screener/actions/workflows/ci.yml/badge.svg)](https://github.com/imnotkeril/crypto-sap-screener/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+![Python 3.11](https://img.shields.io/badge/python-3.11-blue)
+![React 18](https://img.shields.io/badge/react-18-61dafb)
 
 A crypto pairs screener for statistical arbitrage. It loads Binance USDT futures prices through [ccxt](https://github.com/ccxt/ccxt), tests pairs of assets for cointegration, ranks them by a composite score that includes expected net edge after costs, and tracks the intraday z-score of the top pairs with a Kalman-filter hedge ratio. Results are shown in a React dashboard and served by a FastAPI API.
 
@@ -10,7 +15,7 @@ A crypto pairs screener for statistical arbitrage. It loads Binance USDT futures
 
 - **Screens** the top Binance USDT futures by volume for pairs with high correlation, Engle-Granger cointegration (tested in both directions, Bonferroni-adjusted), a mean-reversion half-life and an expected net edge after fees, slippage and funding. Formulas: [`docs/RULES.md`](docs/RULES.md).
 - **Monitors** the top daily pairs intraday: re-fits the hedge ratio with a Kalman filter on 5-minute candles and flags unusual z-scores.
-- **Alerts**: thresholds per pair are stored in the database. Known bug: with the default SQLite database the trigger check reads only in-memory alerts, so stored alerts never fire (docs/QA.md BUG-1). Alerts are never sent to Telegram or email.
+- **Alerts**: z-score thresholds per pair are stored in the database and evaluated by `/api/v1/alerts/triggered/check`, with a 15-minute cooldown. Alerts are in-app only: nothing is sent to Telegram or email.
 - **Tracks positions** as bookkeeping records (entry prices, quantities, PnL). Nothing is sent to an exchange.
 - **Backtests** a z-score entry/exit strategy on one pair, with transaction costs and rolling hedge ratios.
 - **Calculates** position sizes for a pair (dollar-neutral, equal-dollar and always-long-A or always-long-B).
@@ -33,7 +38,7 @@ Taken on a local stack with real Binance data (1d scan, 1035 pairs tested, 3 fou
 
 - Backend: Python 3.11, FastAPI, SQLAlchemy 2 (SQLite by default), pandas, numpy, statsmodels, scipy, ccxt, Pydantic Settings.
 - Data layer: FastAPI, asyncpg (PostgreSQL), redis-py, websockets.
-- Frontend: React 18, TypeScript, Vite 5, Tailwind CSS 3, Recharts, react-query 3, axios.
+- Frontend: React 18, TypeScript, Vite 7, Tailwind CSS 3, Recharts, TanStack Query 5, axios.
 - Tests: pytest (backend), TypeScript compiler (frontend).
 
 ## Repository layout
@@ -69,7 +74,9 @@ Taken on a local stack with real Binance data (1d scan, 1035 pairs tested, 3 fou
 │   ├── vite.config.ts              Dev server on 5173, /api proxy to the backend
 │   ├── nginx.conf.template         Production proxy used by the frontend Docker image
 │   └── Dockerfile
-├── docs/                           RULES.md, QA.md, SECURITY.md, RUNBOOK.md, plan/state files
+├── docs/                           RULES.md, QA.md, SECURITY.md, RUNBOOK.md, plan/state files, img/ (screenshots)
+├── .github/workflows/ci.yml        CI: backend tests + ruff, frontend typecheck and build
+├── LICENSE, SECURITY.md            MIT license, vulnerability reporting policy
 ├── .env.example                    Every variable the backend reads (names and comments only)
 ├── docker-compose.yml              Full stack: redis, postgres, datalayer, backend, frontend
 ├── docker-compose.datalayer.yml    Data layer with its own redis and postgres
@@ -118,10 +125,10 @@ The first screening run can take several minutes because it downloads candles fo
 
 | Where | Command | What it does |
 |---|---|---|
-| root | `npm run dev` | Starts `backend/run.py` (uvicorn with reload, 0.0.0.0:8000) and the Vite dev server (5173) |
+| root | `npm run dev` | Starts `backend/run.py` (uvicorn with reload, 127.0.0.1:8000) and the Vite dev server (5173) |
 | root | `npm run install:all` | `pip install -r backend/requirements.txt` and `npm install` in `frontend/` |
 | backend | `python -m uvicorn app.main:app --port 8000` | Production-style API server (no reload) |
-| backend | `python -m pytest -q` | Backend tests |
+| backend | `pip install pytest && python -m pytest -q` | Backend tests (pytest is not in `requirements.txt`) |
 | backend | `python -m app.data_layer.main` | Market data layer service (port 8001, needs Redis and PostgreSQL) |
 | frontend | `npm run dev` | Vite dev server on port 5173, proxies `/api` to `VITE_BACKEND_URL` or `http://localhost:8000` |
 | frontend | `npm run build` | `tsc --noEmit` then `vite build` into `frontend/dist` |
@@ -291,14 +298,15 @@ There is no `/llms.txt` endpoint yet. See Known limitations.
 
 ## Tests and checks
 
-Run these from the repository root. The expected results were observed on 2026-10-25.
+Run these from the repository root. CI runs the same checks (see `.github/workflows/ci.yml`).
 
 | Check | Command | Expected result |
 |---|---|---|
-| Backend tests | `cd backend && python -m pytest -q` | 88 passed, 5 xfailed (verified 2026-10-25) |
+| Backend tests | `cd backend && python -m pytest -q` | 128 passed (verified 2026-11-09) |
 | Frontend types | `cd frontend && npx tsc --noEmit` | No output, exit 0 (verified) |
 | Frontend build | `cd frontend && npm run build` | `tsc` then `vite build` succeed (verified) |
-| Backend types | `cd backend && python -m mypy app` | Known debt, see Known limitations |
+| Backend lint | `cd backend && python -m ruff check app tests` | All checks passed |
+| Backend types | `cd backend && python -m mypy app` | Success, no issues (67 files) |
 
 ## Docker
 
@@ -337,28 +345,17 @@ Production checklist: set `API_KEY` and `REQUIRE_AUTH=true`, set `CORS_ORIGINS` 
 
 - [`docs/RULES.md`](docs/RULES.md): every rule and formula (cointegration, half-life, Hurst, net edge, composite score, FDR, clustering, Kalman, backtest and metrics).
 - [`docs/QA.md`](docs/QA.md): QA scope and results.
-- [`docs/SECURITY.md`](docs/SECURITY.md): security notes and checks.
+- [`docs/SECURITY.md`](docs/SECURITY.md): security review notes and checks. [`SECURITY.md`](SECURITY.md): how to report a vulnerability.
 - [`docs/RUNBOOK.md`](docs/RUNBOOK.md): operating procedures.
 - `/docs` on a running backend: interactive OpenAPI documentation.
 
 ## Known limitations
 
-**Status: not release-ready.** The independent review ([`docs/REVIEW.md`](docs/REVIEW.md)) found no P0 but 10 open P1 issues; none is fixed yet:
-
-1. R-01: the still-forming last candle is used for `current_zscore` and alerts.
-2. R-02: rolling z-score with a short half-life window is capped (about 1.8 at 5 bars), so |z| never reaches 2.
-3. R-03: Kalman z-score depends on the price level (fixed noise parameters).
-4. R-04: UI settings (FDR, half-life, clustering, costs) are not sent to `/run`.
-5. R-05: alerts are keyed by `pair_id`, which is the rank in a scan, so they point at another pair after the next scan.
-6. R-06: if the first scan fails, every `/status` poll starts another full scan (exchange ban risk).
-7. R-07: backtester falls back to the full-sample beta when the rolling beta is above 10 (look-ahead).
-8. R-08: backtester z-stop is inverted for long spreads.
-9. R-09: backtester fills at the same close that produced the signal.
-10. R-10: the price cache has no TTL.
+**Status.** The independent review ([`docs/REVIEW.md`](docs/REVIEW.md)) found no P0 and ten P1 issues; all ten are fixed with tests, along with most P2 items. Open items are tracked in [`docs/REVIEW.md`](docs/REVIEW.md), [`docs/QA.md`](docs/QA.md) and [`docs/SECURITY.md`](docs/SECURITY.md). This is a research tool, not a hardened production service.
 
 Other known gaps:
 
-- **Alerts are in-app only.** `alerts` stores thresholds (see the BUG-1 note above: triggers are not evaluated for database-stored alerts). There is no Telegram, email or webhook delivery.
+- **Alerts are in-app only.** `alerts` stores thresholds. There is no Telegram, email or webhook delivery.
 - **Live intraday monitor is on demand.** It has no background loop. `POST /api/v1/live/start` is a no-op that returns success. A snapshot is recomputed when someone asks for one.
 - **Live screener loop is not started.** `LiveScreener` contains a 30-minute background loop, but nothing calls its `start()` method. Screening runs only when requested (`/run`, `/run-live`), when the cold-start path triggers in `/status`, or through the cron route.
 - **`DATA_LAYER_URL` is unused.** It is defined in the settings and described in `.env.example` as the source for the live monitor, but no code path reads it. The monitor fetches candles from Binance through ccxt.
@@ -368,15 +365,13 @@ Other known gaps:
 - **FDR and clustering are not reachable through the API.** `use_fdr` and `use_clustering` exist in `ScreeningConfig` (default off) but `POST /api/v1/screener/run` does not expose them, nor the half-life bounds or the cost model. Those options are reachable only from code.
 - **No `/llms.txt`.** The API has no `/llms.txt` route (returns 404), although the project API rules require one.
 - **Duplicate OpenAPI operation id.** `GET` and `POST /api/v1/screener/cron/run` share one function, and FastAPI warns about the duplicate id at schema generation. The API works.
-- **Type-check debt.** `python -m mypy app` reports errors in 17 files (102 errors, mypy 1.20.2, run for this README). Most are SQLAlchemy typing and missing stubs.
 - **No migrations.** See Database and migrations.
 - **Rate limits are per process and in memory.** Multiple workers or restarts reset them.
-- **`backend/run.py` binds 0.0.0.0** with `reload=True`. Without `API_KEY` the API is open to the local network. Use `python -m uvicorn app.main:app --port 8000` with a key for anything shared.
+- **`backend/run.py` is a dev entry point** (127.0.0.1, `reload=True`). With `API_KEY` unset the API is open to local processes. Set `API_KEY` and `REQUIRE_AUTH=true` for anything shared.
 - **Vercel and Railway deployments are not verified** in this repository (see Deployment).
 - **Screening results are in memory.** The live screener keeps the current results in process memory and restores the latest session from the database on start.
 - **ADF score uses a fixed 0.1 scale.** `adf_score = 1 - p / 0.1` ignores `max_adf_pvalue` (see `docs/RULES.md` section 7).
-- **No license file.** The repository contains no `LICENSE`. Do not assume any license for reuse.
 
 ## License
 
-Not specified. The repository has no `LICENSE` file.
+[MIT](LICENSE), copyright 2026 Keril. To report a vulnerability see [SECURITY.md](SECURITY.md).
