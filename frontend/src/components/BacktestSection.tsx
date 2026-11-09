@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useMutation } from 'react-query';
+import { useMutation } from '@tanstack/react-query';
 import { PairResult, PairSpreadData, api } from '../services/api';
 import BacktestResults from './BacktestResults';
 
@@ -30,16 +30,14 @@ const BacktestSection: React.FC<BacktestSectionProps> = ({ pair }) => {
     rebalancing_threshold: 0.05,
   });
 
-  const runBacktestMutation = useMutation(
-    (data: any) => api.runBacktest(data),
-    {
-      onSuccess: (data) => {
-        setSessionId(data.session_id);
-        setShowResults(true);
-        setShowForm(false);
-      },
-    }
-  );
+  const runBacktestMutation = useMutation({
+    mutationFn: (data: any) => api.runBacktest(data),
+    onSuccess: (data) => {
+      setSessionId(data.session_id);
+      setShowResults(true);
+      setShowForm(false);
+    },
+  });
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -493,10 +491,10 @@ const BacktestSection: React.FC<BacktestSectionProps> = ({ pair }) => {
 
           <button
             type="submit"
-            disabled={runBacktestMutation.isLoading}
+            disabled={runBacktestMutation.isPending}
             className="w-full px-4 py-3 bg-emerald-500 hover:bg-emerald-600 text-white font-medium rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {runBacktestMutation.isLoading ? 'Running Backtest...' : 'Run Backtest'}
+            {runBacktestMutation.isPending ? 'Running Backtest...' : 'Run Backtest'}
           </button>
 
           {runBacktestMutation.isError && (

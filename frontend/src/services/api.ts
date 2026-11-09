@@ -200,7 +200,6 @@ export interface LivePairSnapshot {
   spread: number;
   zscore: number;
   daily_zscore: number;
-  zscore_delta: number;
   is_unusual: boolean;
   updated_at: string;
 }
@@ -313,7 +312,7 @@ export const api = {
   // Alerts
   getAlerts: async (pairId?: number): Promise<any> => {
     const params = pairId ? { pair_id: pairId } : {};
-    const response = await apiClient.get('/api/v1/alerts', { params });
+    const response = await apiClient.get('/api/v1/alerts/', { params });
     return response.data;
   },
 
@@ -324,7 +323,7 @@ export const api = {
     thresholdHigh?: number,
     thresholdLow?: number
   ): Promise<any> => {
-    const response = await apiClient.post('/api/v1/alerts', null, {
+    const response = await apiClient.post('/api/v1/alerts/', null, {
       params: {
         pair_id: pairId,
         asset_a: assetA,

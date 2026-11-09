@@ -7,14 +7,13 @@ export default defineConfig({
     rollupOptions: {
       output: {
         manualChunks: {
-          react: ['react', 'react-dom', 'react-query'],
+          react: ['react', 'react-dom', '@tanstack/react-query'],
           charts: ['recharts'],
         },
       },
     },
   },
   server: {
-    host: '0.0.0.0',
     port: 5173,
     proxy: {
       '/api': {

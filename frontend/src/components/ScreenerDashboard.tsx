@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useQuery, useQueryClient } from 'react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../services/api';
 import PairsTable from './PairsTable';
 import StatisticsPanel from './StatisticsPanel';
@@ -30,15 +30,15 @@ const ScreenerDashboard: React.FC = () => {
   useEffect(() => {
     const autoStartTimer = setTimeout(async () => {
       try {
-        const statusData = queryClient.getQueryData('screening-status') as any;
-        const resultsData = queryClient.getQueryData('screening-results') as any;
+        const statusData = queryClient.getQueryData(['screening-status']) as any;
+        const resultsData = queryClient.getQueryData(['screening-results']) as any;
         const hasData = resultsData?.results?.length > 0 || false;
         const isRunning = statusData?.is_running || false;
 
         if (!hasData && !isRunning) {
           await api.runLiveScreening();
-          queryClient.invalidateQueries('screening-status');
-          queryClient.invalidateQueries('screening-results');
+          queryClient.invalidateQueries({ queryKey: ['screening-status'] });
+          queryClient.invalidateQueries({ queryKey: ['screening-results'] });
         }
       } catch (error) {
         console.error('Error auto-starting screening:', error);
@@ -48,26 +48,23 @@ const ScreenerDashboard: React.FC = () => {
     return () => clearTimeout(autoStartTimer);
   }, [queryClient]);
 
-  const { data: status, error: statusError } = useQuery(
-    'screening-status',
-    api.getStatus,
-    {
-      refetchInterval: 10000,
-      refetchOnWindowFocus: false,
-      staleTime: 5000,
-      retry: 1,
-    }
-  );
+  const { data: status, error: statusError } = useQuery({
+    queryKey: ['screening-status'],
+    queryFn: () => api.getStatus(),
+    refetchInterval: 10000,
+    refetchOnWindowFocus: false,
+    staleTime: 5000,
+    retry: 1,
+  });
 
-  const { data: results, isLoading: resultsLoading } = useQuery(
-    'screening-results',
-    () => api.getResults(100),
-    {
+  const { data: results, isLoading: resultsLoading, dataUpdatedAt } = useQuery({
+    queryKey: ['screening-results'],
+    queryFn: () => api.getResults(100),
       refetchInterval: () => {
         try {
-          const statusData = queryClient.getQueryData('screening-status') as any;
+          const statusData = queryClient.getQueryData(['screening-status']) as any;
           const isRunning = statusData?.is_running || false;
-          const resultsData = queryClient.getQueryData('screening-results') as any;
+          const resultsData = queryClient.getQueryData(['screening-results']) as any;
           const hasData = resultsData?.results?.length > 0 || false;
 
           if (isRunning) return 10000;
@@ -82,13 +79,15 @@ const ScreenerDashboard: React.FC = () => {
       retry: 1,
       retryDelay: 2000,
       staleTime: 8000,
-      onSuccess: () => {
-        setLastUpdate(new Date());
-      },
-    }
-  );
+  });
 
-  const { data: stats } = useQuery('statistics', api.getStatistics, {
+  useEffect(() => {
+    if (dataUpdatedAt) setLastUpdate(new Date(dataUpdatedAt));
+  }, [dataUpdatedAt]);
+
+  const { data: stats } = useQuery({
+    queryKey: ['statistics'],
+    queryFn: () => api.getStatistics(),
     refetchInterval: 15000,
     staleTime: 10000,
   });
@@ -107,9 +106,9 @@ const ScreenerDashboard: React.FC = () => {
     setIsStarting(true);
     try {
       await api.runLiveScreening();
-      queryClient.invalidateQueries('screening-status');
-      queryClient.invalidateQueries('screening-results');
-      queryClient.invalidateQueries('statistics');
+      queryClient.invalidateQueries({ queryKey: ['screening-status'] });
+      queryClient.invalidateQueries({ queryKey: ['screening-results'] });
+      queryClient.invalidateQueries({ queryKey: ['statistics'] });
       setTimeout(() => setIsStarting(false), 2000);
     } catch (error) {
       console.error('Error starting screening:', error);
@@ -160,9 +159,9 @@ const ScreenerDashboard: React.FC = () => {
             <AlertManager />
             <ScreenerSettings
               onSettingsApplied={() => {
-                queryClient.invalidateQueries('screening-results');
-                queryClient.invalidateQueries('screening-status');
-                queryClient.invalidateQueries('statistics');
+                queryClient.invalidateQueries({ queryKey: ['screening-results'] });
+                queryClient.invalidateQueries({ queryKey: ['screening-status'] });
+                queryClient.invalidateQueries({ queryKey: ['statistics'] });
               }}
             />
 
@@ -179,11 +178,12 @@ const ScreenerDashboard: React.FC = () => {
         )}
 
         {/* Tabs */}
-        <nav className="mb-5 flex gap-1 border-b border-dark-border">
+        <nav aria-label="Sections" className="mb-5 flex gap-1 border-b border-dark-border">
           {TABS.map((tab) => (
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
+              aria-current={activeTab === tab.id ? 'page' : undefined}
               className={`px-3 py-2 text-sm font-medium transition-colors border-b-2 -mb-px ${
                 activeTab === tab.id
                   ? 'border-accent text-white'

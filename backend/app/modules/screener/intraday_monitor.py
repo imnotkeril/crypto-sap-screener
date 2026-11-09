@@ -204,7 +204,6 @@ class IntradayMonitor:
                 'spread': spread_now,
                 'zscore': zscore,
                 'daily_zscore': daily_zscore,
-                'zscore_delta': zscore - daily_zscore,
                 'is_unusual': bool(abs(zscore) >= self.alert_threshold),
                 'updated_at': now.isoformat(),
             }

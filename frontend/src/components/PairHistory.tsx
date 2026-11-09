@@ -1,5 +1,5 @@
 import React from 'react';
-import { useQuery } from 'react-query';
+import { useQuery } from '@tanstack/react-query';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { api } from '../services/api';
 
@@ -17,11 +17,11 @@ interface HistoryPoint {
 }
 
 const PairHistory: React.FC<PairHistoryProps> = ({ pairId }) => {
-  const { data, isLoading } = useQuery(
-    ['pair-history', pairId],
-    () => api.getPairHistory(pairId),
-    { refetchInterval: 30000 }
-  );
+  const { data, isLoading } = useQuery({
+    queryKey: ['pair-history', pairId],
+    queryFn: () => api.getPairHistory(pairId),
+    refetchInterval: 30000,
+  });
 
   if (isLoading) {
     return (

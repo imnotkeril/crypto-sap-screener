@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useMutation, useQuery } from 'react-query';
+import { useMutation, useQuery } from '@tanstack/react-query';
 import { api } from '../services/api';
 import BacktestResults from './BacktestResults';
 
@@ -17,18 +17,18 @@ const BacktesterDashboard: React.FC = () => {
   });
   const [selectedSessionId, setSelectedSessionId] = useState<number | null>(null);
 
-  const { data: sessions } = useQuery('backtest-sessions', () => api.getBacktestSessions(), {
+  const { data: sessions } = useQuery({
+    queryKey: ['backtest-sessions'],
+    queryFn: () => api.getBacktestSessions(),
     refetchInterval: 30000,
   });
 
-  const runBacktestMutation = useMutation(
-    (data: any) => api.runBacktest(data),
-    {
-      onSuccess: (data) => {
-        setSelectedSessionId(data.session_id);
-      },
-    }
-  );
+  const runBacktestMutation = useMutation({
+    mutationFn: (data: any) => api.runBacktest(data),
+    onSuccess: (data) => {
+      setSelectedSessionId(data.session_id);
+    },
+  });
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -109,10 +109,10 @@ const BacktesterDashboard: React.FC = () => {
 
         <button
           type="submit"
-          disabled={runBacktestMutation.isLoading}
+          disabled={runBacktestMutation.isPending}
           className="w-full px-4 py-2 bg-emerald-500 hover:bg-emerald-600 text-white font-medium rounded-lg transition-colors disabled:opacity-50"
         >
-          {runBacktestMutation.isLoading ? 'Running Backtest...' : 'Run Backtest'}
+          {runBacktestMutation.isPending ? 'Running Backtest...' : 'Run Backtest'}
         </button>
       </form>
 

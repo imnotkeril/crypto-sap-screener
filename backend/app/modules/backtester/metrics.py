@@ -10,7 +10,7 @@ class BacktestMetrics:
     """Calculate backtest performance metrics"""
     
     @staticmethod
-    def calculate_sharpe_ratio(returns: pd.Series, risk_free_rate: float = 0.0) -> float:
+    def calculate_sharpe_ratio(returns: pd.Series, risk_free_rate: float = 0.0, periods_per_year: float = 365.0) -> float:
         """
         Calculate Sharpe ratio
         
@@ -25,7 +25,7 @@ class BacktestMetrics:
             return 0.0
         
         excess_returns = returns - risk_free_rate
-        return np.sqrt(365) * excess_returns.mean() / returns.std()  # 365 for crypto (24/7 trading)
+        return np.sqrt(periods_per_year) * excess_returns.mean() / returns.std()  # 365 daily bars/year for crypto (24/7)
     
     @staticmethod
     def calculate_max_drawdown(equity_curve: pd.Series) -> float:

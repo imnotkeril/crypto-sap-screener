@@ -9,7 +9,7 @@ import logging
 
 from .strategy import ZScoreStrategy, TradeSignal
 from .metrics import BacktestMetrics
-from app.modules.screener.data_loader import DataLoader
+from app.modules.screener.data_loader import DataLoader, TIMEFRAME_MS
 from app.modules.screener.cointegration import CointegrationTester
 
 logger = logging.getLogger(__name__)
@@ -39,7 +39,8 @@ class Backtester:
         end_date: Optional[datetime] = None,
         lookback_days: int = 365,
         beta: Optional[float] = None,
-        position_size_pct: float = 100.0
+        position_size_pct: float = 100.0,
+        timeframe: str = '1d',
     ) -> Dict:
         """
         Run backtest for a pair
@@ -57,8 +58,8 @@ class Backtester:
             Dictionary with backtest results
         """
         # Load price data
-        price_a = self.data_loader.get_price_series(asset_a, days=lookback_days, db=None)
-        price_b = self.data_loader.get_price_series(asset_b, days=lookback_days, db=None)
+        price_a = self.data_loader.get_price_series(asset_a, days=lookback_days, db=None, timeframe=timeframe)
+        price_b = self.data_loader.get_price_series(asset_b, days=lookback_days, db=None, timeframe=timeframe)
         
         if len(price_a) < 50 or len(price_b) < 50:
             raise ValueError("Insufficient data for backtesting")
@@ -639,7 +640,7 @@ class Backtester:
                         total_pnl = pnl_a + pnl_b
                         
                         # Apply transaction costs for exit
-                        exit_notional = last_trade['dollar_a'] + last_trade['dollar_b']
+                        exit_notional = abs(last_trade['quantity_a']) * price_a_val + abs(last_trade['quantity_b']) * price_b_val
                         exit_cost = exit_notional * self.transaction_cost_pct
                         total_pnl -= exit_cost
                         
@@ -799,7 +800,7 @@ class Backtester:
                 total_pnl = pnl_a + pnl_b
                 
                 # Apply transaction costs for exit
-                exit_notional = last_trade['dollar_a'] + last_trade['dollar_b']
+                exit_notional = abs(last_trade['quantity_a']) * final_price_a + abs(last_trade['quantity_b']) * final_price_b
                 exit_cost = exit_notional * self.transaction_cost_pct
                 total_pnl -= exit_cost
                 
@@ -899,7 +900,9 @@ class Backtester:
         returns = equity_series.pct_change().dropna()
         
         # Basic metrics
-        sharpe_ratio = BacktestMetrics.calculate_sharpe_ratio(returns)
+        sharpe_ratio = BacktestMetrics.calculate_sharpe_ratio(
+            returns, periods_per_year=365.0 * 86_400_000 / TIMEFRAME_MS.get(timeframe, 86_400_000)
+        )
         max_drawdown = BacktestMetrics.calculate_max_drawdown(equity_series)
         win_rate = BacktestMetrics.calculate_win_rate(trades)
         

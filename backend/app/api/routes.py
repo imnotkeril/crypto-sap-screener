@@ -26,7 +26,7 @@ from app.api.schemas import (
 )
 from app.config import settings
 from app.modules.screener.data_loader import bars_for_lookback
-from app.api.security import expensive_limit, require_cron_secret
+from app.api.security import expensive_limit, heavy_limit, require_cron_secret
 from app.modules.screener.screener import PairsScreener
 from app.modules.screener.live_screener import get_live_screener
 from app.modules.shared.models import ScreeningConfig
@@ -180,7 +180,7 @@ async def get_screening_status(background_tasks: BackgroundTasks, db: Session = 
 
 @cron_router.api_route("/cron/run", methods=["GET", "POST"],
                        dependencies=[Depends(require_cron_secret), Depends(expensive_limit)])
-async def cron_run_screening():
+def cron_run_screening():
     """Synchronous screening run for scheduled triggers (e.g. Vercel Cron).
 
     Runs to completion within the request so it works without a persistent
@@ -536,8 +536,8 @@ async def get_statistics(db: Session = Depends(get_db)):
         )
 
 
-@router.get("/pairs/{pair_id}/spread")
-async def get_pair_spread_data(pair_id: int):
+@router.get("/pairs/{pair_id}/spread", dependencies=[Depends(heavy_limit)])
+def get_pair_spread_data(pair_id: int):
     """Get spread and z-score data for a specific pair for charting"""
     try:
         live_screener = get_live_screener()

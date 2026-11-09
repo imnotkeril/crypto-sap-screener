@@ -114,13 +114,13 @@ def test_alert_api_crud_roundtrip(client, auth):
     assert client.put(f"/api/v1/alerts/{aid}", params={"enabled": "true"}, headers=auth).status_code == 404
 
 
-def test_alert_api_duplicate_create_is_not_deduped(client, auth):
-    """Documents BUG-4: identical alert definitions are accepted twice (no uniqueness check)."""
+def test_alert_api_duplicate_create_is_deduped(client, auth):
+    """BUG-4 fixed: identical alert definitions return the existing alert."""
     pid, a, b = _pair()
     q = {"pair_id": pid, "asset_a": a, "asset_b": b}
     ids = [client.post("/api/v1/alerts/", params=q, headers=auth).json()["alert_id"] for _ in range(2)]
-    assert ids[0] != ids[1]
-    for i in ids:
+    assert ids[0] == ids[1]
+    for i in set(ids):
         client.delete(f"/api/v1/alerts/{i}", headers=auth)
 
 

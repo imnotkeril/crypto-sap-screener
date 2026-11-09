@@ -1,5 +1,5 @@
 import React from 'react';
-import { useQuery } from 'react-query';
+import { useQuery } from '@tanstack/react-query';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine, Scatter, ComposedChart } from 'recharts';
 import { api } from '../services/api';
 
@@ -8,10 +8,10 @@ interface BacktestResultsProps {
 }
 
 const BacktestResults: React.FC<BacktestResultsProps> = ({ sessionId }) => {
-  const { data, isLoading } = useQuery(
-    ['backtest-results', sessionId],
-    () => api.getBacktestResults(sessionId)
-  );
+  const { data, isLoading } = useQuery({
+    queryKey: ['backtest-results', sessionId],
+    queryFn: () => api.getBacktestResults(sessionId),
+  });
 
   if (isLoading) {
     return <div className="text-center text-gray-400 py-8">Loading results...</div>;

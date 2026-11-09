@@ -67,6 +67,7 @@ class RateLimiter:
 
 
 expensive_limit = RateLimiter(limit=6, window=60.0)
+heavy_limit = RateLimiter(limit=30, window=60.0)
 general_limit = RateLimiter(limit=240, window=60.0)
 
 auth_dependencies = [Depends(require_api_key), Depends(general_limit)]

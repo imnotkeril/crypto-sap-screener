@@ -95,3 +95,8 @@ def test_screen_finds_planted_pair_and_fdr_is_stricter():
     assert len(with_fdr) <= len(raw)
     for r in with_fdr + raw:
         assert r["adf_pvalue_fdr"] >= r["adf_pvalue"]  # q-values always attached
+        assert r["adf_pvalue_fdr"] <= 1.0
+    # R-17: q >= p alone is vacuous; kept pairs must actually pass the BH bound
+    # and the correction must inflate at least one p-value (m > 1 tests).
+    assert all(r["adf_pvalue_fdr"] <= cfg.max_adf_pvalue for r in with_fdr)
+    assert any(r["adf_pvalue_fdr"] > r["adf_pvalue"] for r in raw + with_fdr)

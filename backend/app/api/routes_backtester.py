@@ -6,6 +6,7 @@ from typing import Any, Optional, Literal
 from datetime import datetime
 from pydantic import BaseModel, Field, field_validator
 from app.api.schemas import ASSET_SYMBOL_RE
+from app.api.security import heavy_limit
 
 from app.modules.backtester.backtester import Backtester
 from app.modules.backtester.strategy import ZScoreStrategy
@@ -34,6 +35,7 @@ class BacktestRequest(BaseModel):
     initial_capital: float = Field(default=10000.0, gt=0)
     position_size_pct: float = Field(default=100.0, ge=1.0, le=100.0, description="Percentage of capital to use per trade (1-100%)")
     lookback_days: int = Field(default=365, ge=50, le=1000)
+    timeframe: Literal['1m', '5m', '15m', '1h', '4h', '1d'] = '1d'
     beta: Optional[float] = None
     transaction_cost_pct: float = Field(default=0.001, ge=0.0, le=0.05, description="Transaction cost for ALL trades (entry/exit/rebalancing) as % of notional")
     enable_rebalancing: bool = Field(default=False, description="Enable dynamic hedge rebalancing")
@@ -49,8 +51,8 @@ class BacktestRequest(BaseModel):
         return v
 
 
-@router.post("/run")
-async def run_backtest(request: BacktestRequest, db: Session = Depends(get_db)):
+@router.post("/run", dependencies=[Depends(heavy_limit)])
+def run_backtest(request: BacktestRequest, db: Session = Depends(get_db)):
     """Run a backtest for a pair"""
     try:
         strategy = ZScoreStrategy(
@@ -73,6 +75,7 @@ async def run_backtest(request: BacktestRequest, db: Session = Depends(get_db)):
             asset_b=request.asset_b,
             strategy=strategy,
             lookback_days=request.lookback_days,
+            timeframe=request.timeframe,
             beta=request.beta,
             position_size_pct=request.position_size_pct
         )

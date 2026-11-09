@@ -77,6 +77,29 @@ async def create_alert(
             if threshold_high is None and threshold_low is None:
                 threshold_high = 2.0
                 threshold_low = -2.0
+            existing = (
+                db.query(DbAlert)
+                .filter(
+                    DbAlert.pair_id == pair_id,
+                    DbAlert.threshold_high == threshold_high,
+                    DbAlert.threshold_low == threshold_low,
+                )
+                .first()
+            )
+            if existing is not None:
+                # BUG-4: identical definition -> idempotent, return the existing alert
+                row = existing
+                return {
+                    "alert_id": row.id,
+                    "pair_id": row.pair_id,
+                    "asset_a": row.asset_a,
+                    "asset_b": row.asset_b,
+                    "threshold_high": row.threshold_high,
+                    "threshold_low": row.threshold_low,
+                    "enabled": row.enabled == "true",
+                    "last_triggered": None,
+                    "duplicate": True,
+                }
             row = DbAlert(
                 pair_id=pair_id,
                 asset_a=asset_a,

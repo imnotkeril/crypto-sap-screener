@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useQuery } from 'react-query';
+import { useQuery } from '@tanstack/react-query';
 import { api } from '../services/api';
 
 interface Alert {
@@ -30,24 +30,24 @@ const AlertManager: React.FC = () => {
   });
 
   // Fetch alerts
-  const { data: alertsData, refetch: refetchAlerts } = useQuery(
-    'alerts',
-    async () => {
+  const { data: alertsData, refetch: refetchAlerts } = useQuery({
+    queryKey: ['alerts'],
+    queryFn: async () => {
       const response = await api.getAlerts();
       return response;
     },
-    { refetchInterval: 10000 }
-  );
+    refetchInterval: 10000,
+  });
 
   // Fetch triggered alerts
-  const { data: triggeredData } = useQuery(
-    'triggered-alerts',
-    async () => {
+  const { data: triggeredData } = useQuery({
+    queryKey: ['triggered-alerts'],
+    queryFn: async () => {
       const response = await api.getTriggeredAlerts();
       return response;
     },
-    { refetchInterval: 5000 }
-  );
+    refetchInterval: 5000,
+  });
 
   const alerts: Alert[] = alertsData?.alerts || [];
   const triggered: TriggeredAlert[] = triggeredData?.triggered || [];

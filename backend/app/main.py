@@ -62,6 +62,8 @@ async def _startup():
     """Initialize database (SQLite by default)"""
     if settings.REQUIRE_AUTH and not settings.API_KEY:
         raise RuntimeError("REQUIRE_AUTH is set but API_KEY is empty")
+    if not settings.API_KEY:
+        logger.warning("API_KEY is not set: every /api/v1 route is OPEN. Set API_KEY and REQUIRE_AUTH=true for any public deploy.")
     init_db()
     if settings.SCAN_SCHEDULER_ENABLED:
         get_live_screener().start_scheduler(settings.SCAN_INTERVAL_SECONDS)

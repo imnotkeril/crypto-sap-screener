@@ -18,8 +18,10 @@ def _series(n=300, seed=1):
 class DL:
     def __init__(self, a, b):
         self.a, self.b = a, b
+        self.timeframes = []
 
-    def get_price_series(self, symbol, days=0, db=None):
+    def get_price_series(self, symbol, days=0, db=None, timeframe="1d"):
+        self.timeframes.append(timeframe)
         return self.a if symbol == "A" else self.b
 
 
@@ -62,9 +64,17 @@ def test_costs_reduce_final_equity_by_expected_amount():
     assert paid["equity_curve"][-1] < free["equity_curve"][-1]
     # each closed trade pays an exit cost: pnl_paid = pnl_free - 0.001*(entry notional)
     t0, t1 = free["trades"][0], paid["trades"][0]
-    # NOTE (BUG-8, low): exit cost is charged on the ENTRY notional (dollar_a+dollar_b), not exit-price
-    # notional (backtester.py:624, 785). Pinned here as current behaviour.
-    assert t0["pnl"] - t1["pnl"] == pytest.approx(0.001 * (t1["dollar_a"] + t1["dollar_b"]), rel=1e-9)
+    # BUG-8 fixed: exit cost is charged on the exit-price notional.
+    exit_notional = abs(t1["quantity_a"]) * t1["exit_price_a"] + abs(t1["quantity_b"]) * t1["exit_price_b"]
+    assert t0["pnl"] - t1["pnl"] == pytest.approx(0.001 * exit_notional, rel=1e-9)
+
+
+def test_backtest_passes_pair_timeframe_to_loader():
+    a, b = _series(300)
+    bt = Backtester()
+    bt.data_loader = DL(a, b)
+    bt.run_backtest("A", "B", ZScoreStrategy(), lookback_days=300, timeframe="1h")
+    assert set(bt.data_loader.timeframes) == {"1h"}
 
 
 def test_metrics_block_matches_trades():
