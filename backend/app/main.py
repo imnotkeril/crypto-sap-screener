@@ -2,6 +2,7 @@
 FastAPI application entry point
 Works without database - uses in-memory storage
 """
+from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -18,11 +19,25 @@ logger = logging.getLogger(__name__)
 # Live screener will be started manually via API endpoint
 # No automatic startup to avoid unnecessary Binance API calls
 
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    """Initialize the database (SQLite by default) and the optional scan scheduler."""
+    if settings.REQUIRE_AUTH and not settings.API_KEY:
+        raise RuntimeError("REQUIRE_AUTH is set but API_KEY is empty")
+    if not settings.API_KEY:
+        logger.warning("API_KEY is not set: every /api/v1 route is OPEN. Set API_KEY and REQUIRE_AUTH=true for any public deploy.")
+    init_db()
+    if settings.SCAN_SCHEDULER_ENABLED:
+        get_live_screener().start_scheduler(settings.SCAN_INTERVAL_SECONDS)
+    yield
+
+
 # Create FastAPI app
 app = FastAPI(
     title="Statistical Arbitrage Pairs Screener",
     description="API for screening cryptocurrency pairs for statistical arbitrage (Live mode - no database required)",
-    version="1.0.0"
+    version="1.0.0",
+    lifespan=lifespan,
 )
 
 # CORS middleware
@@ -55,18 +70,6 @@ app.include_router(positions_router, prefix=f"{settings.API_V1_PREFIX}/positions
 # Include live intraday monitor router
 from app.api.routes_live import router as live_router
 app.include_router(live_router, prefix=f"{settings.API_V1_PREFIX}/live", tags=["live"], dependencies=auth_dependencies)
-
-
-@app.on_event("startup")
-async def _startup():
-    """Initialize database (SQLite by default)"""
-    if settings.REQUIRE_AUTH and not settings.API_KEY:
-        raise RuntimeError("REQUIRE_AUTH is set but API_KEY is empty")
-    if not settings.API_KEY:
-        logger.warning("API_KEY is not set: every /api/v1 route is OPEN. Set API_KEY and REQUIRE_AUTH=true for any public deploy.")
-    init_db()
-    if settings.SCAN_SCHEDULER_ENABLED:
-        get_live_screener().start_scheduler(settings.SCAN_INTERVAL_SECONDS)
 
 
 @app.get("/")

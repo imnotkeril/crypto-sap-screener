@@ -178,8 +178,8 @@ async def get_screening_status(background_tasks: BackgroundTasks, db: Session = 
         )
 
 
-@cron_router.api_route("/cron/run", methods=["GET", "POST"],
-                       dependencies=[Depends(require_cron_secret), Depends(expensive_limit)])
+@cron_router.post("/cron/run", dependencies=[Depends(require_cron_secret), Depends(expensive_limit)])
+@cron_router.get("/cron/run", dependencies=[Depends(require_cron_secret), Depends(expensive_limit)])
 def cron_run_screening():
     """Synchronous screening run for scheduled triggers (e.g. Vercel Cron).
 

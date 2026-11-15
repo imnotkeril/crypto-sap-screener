@@ -5,6 +5,18 @@
 ![Python 3.11](https://img.shields.io/badge/python-3.11-blue)
 ![React 18](https://img.shields.io/badge/react-18-61dafb)
 
+<p align="center">
+  <a href="docs/RULES.md">Formulas</a>
+  &nbsp;·&nbsp;
+  <a href="docs/RUNBOOK.md">Runbook</a>
+  &nbsp;·&nbsp;
+  <a href="llms.txt">API reference (llms.txt)</a>
+  &nbsp;·&nbsp;
+  <a href="CONTRIBUTING.md">Contributing</a>
+  &nbsp;·&nbsp;
+  <a href="CHANGELOG.md">Changelog</a>
+</p>
+
 A crypto pairs screener for statistical arbitrage. It loads Binance USDT futures prices through [ccxt](https://github.com/ccxt/ccxt), tests pairs of assets for cointegration, ranks them by a composite score that includes expected net edge after costs, and tracks the intraday z-score of the top pairs with a Kalman-filter hedge ratio. Results are shown in a React dashboard and served by a FastAPI API.
 
 > **Disclaimer.** This is a research and educational tool. It is not investment advice. Statistical tests, backtests and simulated results do not guarantee future performance, and trading can lose all capital. The software **never sends orders** to any exchange. It has no order-placement code path and no live trading keys are used.
@@ -363,7 +375,6 @@ Other known gaps:
 - **Data layer list variables need JSON.** `DATALAYER_SYMBOLS=BTC/USDT,ETH/USDT` fails with a `SettingsError` (verified). Use `DATALAYER_SYMBOLS=["BTC/USDT","ETH/USDT"]`. The compose comment that shows comma-separated values is wrong.
 - **FDR and clustering are not reachable through the API.** `use_fdr` and `use_clustering` exist in `ScreeningConfig` (default off) but `POST /api/v1/screener/run` does not expose them, nor the half-life bounds or the cost model. Those options are reachable only from code.
 - **No `/llms.txt`.** The API has no `/llms.txt` route (returns 404), although the project API rules require one.
-- **Duplicate OpenAPI operation id.** `GET` and `POST /api/v1/screener/cron/run` share one function, and FastAPI warns about the duplicate id at schema generation. The API works.
 - **No migrations.** See Database and migrations.
 - **Rate limits are per process and in memory.** Multiple workers or restarts reset them.
 - **`backend/run.py` is a dev entry point** (127.0.0.1, `reload=True`). With `API_KEY` unset the API is open to local processes. Set `API_KEY` and `REQUIRE_AUTH=true` for anything shared.
