@@ -110,11 +110,23 @@ class DataLoader:
         self._fetching_locks_lock = threading.Lock()  # Lock for managing fetching_locks dict
         
         # Persistent file cache directory
-        self._cache_dir = Path("cache/price_data")
-        self._cache_dir.mkdir(parents=True, exist_ok=True)
+        self._cache_dir = self._resolve_cache_dir(Path("cache/price_data"))
         
         self._initialized = True
     
+    @staticmethod
+    def _resolve_cache_dir(preferred: Path) -> Path:
+        """Use the preferred cache dir, or the system temp dir when the filesystem is read-only
+        (serverless hosts such as Vercel only allow writes under /tmp)."""
+        import tempfile
+        try:
+            preferred.mkdir(parents=True, exist_ok=True)
+            return preferred
+        except OSError:
+            fallback = Path(tempfile.gettempdir()) / "sap_price_cache"
+            fallback.mkdir(parents=True, exist_ok=True)
+            return fallback
+
     def get_top_assets(self, limit: Optional[int] = None, min_volume_usd: float = 1_000_000) -> List[str]:
         """
         Get cryptocurrencies by volume from Binance (NO FALLBACK - real data only)
