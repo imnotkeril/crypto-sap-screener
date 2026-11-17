@@ -16,6 +16,7 @@ import httpx
 logger = logging.getLogger(__name__)
 
 PATHNAME = "sap/snapshot.json"
+BLOB_API_URL = os.getenv("VERCEL_BLOB_API_URL", "https://vercel.com/api/blob")
 
 
 def _token() -> Optional[str]:
@@ -43,19 +44,29 @@ def _public_url() -> Optional[str]:
 
 def save_snapshot(payload: Dict[str, Any]) -> bool:
     """Write the snapshot, replacing the previous one. Never raises."""
-    if not enabled():
+    token = _token()
+    if not token:
         return False
     try:
-        from vercel.blob.sync import put_blob
         body = json.dumps(payload, default=str).encode("utf-8")
-        put_blob(
-            PATHNAME,
-            body,
-            access="public",
-            content_type="application/json",
-            allow_overwrite=True,
-            cache_control_max_age=60,
+        r = httpx.put(
+            BLOB_API_URL,
+            params={"pathname": PATHNAME},
+            content=body,
+            timeout=15,
+            headers={
+                "authorization": f"Bearer {token}",
+                "x-api-version": "12",
+                "x-vercel-blob-access": "public",
+                "x-add-random-suffix": "0",
+                "x-allow-overwrite": "1",
+                "x-content-type": "application/json",
+                "x-cache-control-max-age": "60",
+            },
         )
+        if r.status_code >= 300:
+            logger.warning(f"Blob snapshot upload failed: HTTP {r.status_code} {r.text[:200]}")
+            return False
         return True
     except Exception as e:
         logger.warning(f"Could not save snapshot to Blob: {e}")

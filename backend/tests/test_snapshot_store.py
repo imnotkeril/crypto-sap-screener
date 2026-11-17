@@ -35,10 +35,16 @@ def test_save_serializes_datetimes(monkeypatch):
     monkeypatch.setenv("BLOB_READ_WRITE_TOKEN", "vercel_blob_rw_abc_secret")
     sent = {}
 
-    def fake_put(path, body, **kw):
-        sent["body"] = body
+    class Resp:
+        status_code = 200
+        text = ""
 
-    import vercel.blob.sync as vs
-    monkeypatch.setattr(vs, "put_blob", fake_put)
+    def fake_put(url, **kw):
+        sent.update(kw)
+        return Resp()
+
+    monkeypatch.setattr(snapshot_store.httpx, "put", fake_put)
     assert snapshot_store.save_snapshot({"results": [{"d": datetime(2026, 1, 1)}]})
-    assert json.loads(sent["body"])["results"][0]["d"].startswith("2026-01-01")
+    assert json.loads(sent["content"])["results"][0]["d"].startswith("2026-01-01")
+    assert sent["headers"]["x-allow-overwrite"] == "1"
+    assert sent["params"] == {"pathname": "sap/snapshot.json"}
