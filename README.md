@@ -1,3 +1,5 @@
+<p align="center"><img src="docs/img/social-preview.png" alt="SAP Screener" width="900"></p>
+
 <h1 align="center">SAP Screener</h1>
 <p align="center"><b>Statistical-arbitrage pairs screener for crypto perpetuals</b><br>
 Cointegration, mean-reversion half-life, expected net edge after costs, Kalman live z-score and a backtester, in a FastAPI + React dashboard.</p>
