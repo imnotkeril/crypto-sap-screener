@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- Live demo on Vercel: Blob snapshot persistence for serverless, daily cron scan, frontend wired through `VITE_API_URL` (2026-11-17). Dependabot now groups minor/patch updates and skips majors.
 - Final polish: FastAPI lifespan instead of deprecated `on_event`, pydantic `SettingsConfigDict`, unique OpenAPI ids for the cron route, ruff clean, CONTRIBUTING, issue/PR templates, Dependabot.
 - Verified 2026-11-15: 128 tests pass, ruff and mypy clean, frontend build clean, live 1d scan on fresh Binance data (2628 pairs tested, 10 found) matches an independent correlation check.
 - Security: API key auth, CORS allowlist, cron secret, rate limits, no debug endpoint, no error detail leakage, pair_id validation.
