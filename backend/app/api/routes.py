@@ -212,12 +212,15 @@ def _cron_run_timeframe(timeframe: str):
         raise HTTPException(status_code=400, detail=f"timeframe must be one of {sorted(CRON_TIMEFRAMES)} or 1d")
     try:
         from app.modules.screener import snapshot_store
+        hourly_assets = list(dict.fromkeys(a.strip().upper() for a in settings.HOURLY_ASSETS.split(',') if a.strip())) or None
         config = ScreeningConfig(
             timeframe=timeframe,
             lookback_days=settings.HOURLY_LOOKBACK_DAYS if timeframe == "1h" else max(settings.HOURLY_LOOKBACK_DAYS, 90),
+            assets=hourly_assets,
             max_assets=settings.HOURLY_MAX_ASSETS,
-            min_correlation=settings.SCREENER_MIN_CORRELATION,
-            max_adf_pvalue=settings.SCREENER_MAX_ADF_PVALUE,
+            min_correlation=settings.HOURLY_MIN_CORRELATION,
+            max_adf_pvalue=settings.HOURLY_MAX_ADF_PVALUE,
+            use_fdr=True,  # ~1200 pairs are tested at once: control false discoveries
             include_hurst=True,
             min_volume_usd=settings.SCREENER_MIN_VOLUME_USD,
         )

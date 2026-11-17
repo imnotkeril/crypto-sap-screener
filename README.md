@@ -344,6 +344,8 @@ docker compose up -d --build
 
 - API: the Python runtime (`vercel.json`, `backend/serverless_entry.py`), region Frankfurt, function timeout 300 s.
 - A daily cron (`/api/v1/screener/cron/run`, protected by `CRON_SECRET`) scans the top `SCREENER_MAX_ASSETS` (60) assets and writes the latest results as `sap/snapshot.json` into a Vercel Blob store (`BLOB_READ_WRITE_TOKEN`, see `backend/app/modules/screener/snapshot_store.py`). Serverless instances keep no state, so every cold start restores results from that snapshot.
+- A second cron (`?timeframe=1h`) scans ~50 crypto majors on 1-hour candles over 30 days with Benjamini-Hochberg FDR control and stores it as `sap/snapshot-1h.json`; the UI has a Daily / Hourly toggle. `DEMO_MODE=true` disables manual runs on the public API.
+- A second cron (`?timeframe=1h`) scans ~50 crypto majors (`HOURLY_ASSETS`) on 1-hour candles over 30 days with Benjamini-Hochberg FDR control and stores it as `sap/snapshot-1h.json`; the UI has a Daily / Hourly toggle. `DEMO_MODE=true` disables manual runs on the public API.
 - The live monitor fetches candles from Binance on demand. The demo API has no `API_KEY` (the UI has no key support), so it is open and rate limited: do not point real keys or private data at it.
 
 The repository also contains configuration for other hosts. Treat each as a starting point.
@@ -384,7 +386,7 @@ Other known gaps:
 - **No migrations.** See Database and migrations.
 - **Rate limits are per process and in memory.** Multiple workers or restarts reset them.
 - **`backend/run.py` is a dev entry point** (127.0.0.1, `reload=True`). With `API_KEY` unset the API is open to local processes. Set `API_KEY` and `REQUIRE_AUTH=true` for anything shared.
-- **Railway and Docker hosting are not verified** in this repository; only the Vercel setup above is running (see Deployment). The demo scans 60 assets once a day, so it shows few pairs and its "last scan" label can read "never" until a snapshot loads.
+- **Railway and Docker hosting are not verified** in this repository; only the Vercel setup above is running (see Deployment). The demo scans once a day (60 assets, 1d) plus an hourly-candle scan, so it shows a handful of pairs; intraday (minute) screening is not available there.
 - **Screening results are in memory.** The live screener keeps the current results in process memory and restores the latest session from the database on start.
 - **ADF score uses a fixed 0.1 scale.** `adf_score = 1 - p / 0.1` ignores `max_adf_pvalue` (see `docs/RULES.md` section 7).
 
