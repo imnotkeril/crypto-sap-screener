@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { LineChart, Line, ResponsiveContainer, YAxis } from 'recharts';
-import { api, LivePairSnapshot } from '../services/api';
+import { api, LivePairSnapshot, PairResult } from '../services/api';
 
 const fmtPrice = (v: number) => {
   if (v >= 1000) return v.toFixed(2);
@@ -50,7 +50,68 @@ const Sparkline: React.FC<{ assetA: string; assetB: string; active: boolean }> =
   );
 };
 
-const LiveMonitor: React.FC = () => {
+const Tile: React.FC<{ label: string; value: string; hint?: string; tone?: string }> = ({ label, value, hint, tone = 'text-gray-100' }) => (
+  <div className="rounded border border-dark-border bg-dark-surface px-3 py-2" title={hint}>
+    <div className="text-2xs uppercase tracking-wider text-muted-dim">{label}</div>
+    <div className={`mt-0.5 font-mono text-sm ${tone}`}>{value}</div>
+  </div>
+);
+
+/** Expanded row: live numbers joined with the daily screen stats of the same pair. */
+const PairDetailCard: React.FC<{ p: LivePairSnapshot; daily?: PairResult; threshold: number }> = ({ p, daily, threshold }) => {
+  const deviation = p.zscore - p.daily_zscore;
+  const stretched = Math.abs(p.zscore) >= threshold;
+  const richA = p.zscore > 0; // spread = A - (alpha + beta * B)
+  const halfLife = daily?.half_life;
+  const dash = '—';
+
+  return (
+    <div className="space-y-3 px-4 pb-4 pt-1">
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-5">
+        <Tile label="Live z" value={fmtZ(p.zscore)} tone={zColor(p.zscore, threshold)} hint="Spread z-score on live prices" />
+        <Tile label="Daily z" value={fmtZ(p.daily_zscore)} hint="z-score at the last daily close" />
+        <Tile label="Intraday move" value={fmtZ(deviation)} hint="Live z minus daily z: how far the spread moved since the daily fit" />
+        <Tile label="Hedge ratio β" value={p.beta.toFixed(3)} hint="Units of B per unit of A in the spread A − (α + β·B)" />
+        <Tile label="Correlation" value={daily ? daily.correlation.toFixed(2) : dash} />
+        <Tile label="ADF p-value" value={daily ? daily.adf_pvalue.toFixed(4) : dash} hint="Engle-Granger cointegration test on the daily window" />
+        <Tile label="Half-life" value={halfLife != null ? `${halfLife.toFixed(1)} d` : dash} hint="Typical time for the spread to close half of a deviation" />
+        <Tile label="Hurst" value={daily?.hurst_exponent != null ? daily.hurst_exponent.toFixed(2) : dash} hint="Below 0.5 suggests mean reversion" />
+        <Tile
+          label="Net edge"
+          value={daily?.expected_net_edge_pct != null ? `${daily.expected_net_edge_pct.toFixed(2)}%` : dash}
+          hint="Expected profit of a round trip at entry z after fees, slippage and funding"
+          tone={daily?.expected_net_edge_pct != null && daily.expected_net_edge_pct > 0 ? 'text-positive' : 'text-gray-100'}
+        />
+        <Tile label="Score" value={daily?.composite_score != null ? daily.composite_score.toFixed(0) : dash} hint="Composite quality score of the daily screen (0-100)" />
+      </div>
+
+      <div className={`rounded border px-3 py-2 text-xs ${stretched ? 'border-negative/30 bg-negative/5 text-gray-200' : 'border-dark-border bg-dark-surface text-muted'}`}>
+        {stretched ? (
+          <>
+            Spread is stretched (|z| = {Math.abs(p.zscore).toFixed(2)} ≥ {threshold.toFixed(1)}). If the pair keeps mean-reverting:{' '}
+            <span className="font-medium text-gray-100">
+              {richA ? `short ${p.asset_a}, long ${p.beta.toFixed(3)}× ${p.asset_b}` : `long ${p.asset_a}, short ${p.beta.toFixed(3)}× ${p.asset_b}`}
+            </span>
+            {halfLife != null && <> · closing half the gap typically takes about {halfLife.toFixed(1)} days</>}. A fast, large move can also mean the
+            relationship broke: check the pair before acting. Research tool, not advice.
+          </>
+        ) : (
+          <>
+            Inside the normal range (|z| {Math.abs(p.zscore).toFixed(2)} &lt; {threshold.toFixed(1)}): no signal. The monitor flags the pair at |z| ≥ {threshold.toFixed(1)}.
+          </>
+        )}
+      </div>
+
+      <Sparkline assetA={p.asset_a} assetB={p.asset_b} active />
+    </div>
+  );
+};
+
+interface LiveMonitorProps {
+  dailyPairs?: PairResult[];
+}
+
+const LiveMonitor: React.FC<LiveMonitorProps> = ({ dailyPairs }) => {
   const [expanded, setExpanded] = useState<string | null>(null);
 
   const { data: snapshot, isLoading } = useQuery({
@@ -160,7 +221,11 @@ const LiveMonitor: React.FC = () => {
                     {isExpanded && (
                       <tr className="border-b border-dark-divider last:border-b-0 bg-dark-bg/40">
                         <td colSpan={7}>
-                          <Sparkline assetA={p.asset_a} assetB={p.asset_b} active={isExpanded} />
+                          <PairDetailCard
+                            p={p}
+                            daily={dailyPairs?.find((d) => d.asset_a === p.asset_a && d.asset_b === p.asset_b)}
+                            threshold={threshold}
+                          />
                         </td>
                       </tr>
                     )}

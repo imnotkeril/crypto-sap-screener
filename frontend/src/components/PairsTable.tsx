@@ -7,12 +7,14 @@ import PriceChart from './PriceChart';
 
 interface PairsTableProps {
   pairs: PairResult[];
+  /** false for scans whose pairs have no stored detail data (e.g. the hourly demo scan) */
+  detailsEnabled?: boolean;
 }
 
 type SortField = 'correlation' | 'adf_pvalue' | 'beta' | 'spread_std' | 'hurst_exponent' | 'pair' | 'composite_score';
 type SortDirection = 'asc' | 'desc';
 
-const PairsTable: React.FC<PairsTableProps> = ({ pairs }) => {
+const PairsTable: React.FC<PairsTableProps> = ({ pairs, detailsEnabled = true }) => {
   const [selectedPair, setSelectedPair] = useState<PairResult | null>(null);
   const [spreadData, setSpreadData] = useState<any>(null);
   const [loadingChart, setLoadingChart] = useState(false);
@@ -40,6 +42,7 @@ const PairsTable: React.FC<PairsTableProps> = ({ pairs }) => {
   const itemsPerPage = 20;
 
   const handlePairClick = async (pair: PairResult) => {
+    if (!detailsEnabled) return;
     // Save current scroll position
     const scrollY = window.scrollY;
     

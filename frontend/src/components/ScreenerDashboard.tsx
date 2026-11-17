@@ -23,30 +23,9 @@ const Spinner: React.FC<{ className?: string }> = ({ className = 'h-4 w-4' }) =>
 
 const ScreenerDashboard: React.FC = () => {
   const [lastUpdate, setLastUpdate] = useState<Date>(new Date());
-  const [isStarting, setIsStarting] = useState(false);
+  const [tf, setTf] = useState<'1d' | '1h'>('1d');
   const [activeTab, setActiveTab] = useState<Tab>('screener');
   const queryClient = useQueryClient();
-
-  useEffect(() => {
-    const autoStartTimer = setTimeout(async () => {
-      try {
-        const statusData = queryClient.getQueryData(['screening-status']) as any;
-        const resultsData = queryClient.getQueryData(['screening-results']) as any;
-        const hasData = resultsData?.results?.length > 0 || false;
-        const isRunning = statusData?.is_running || false;
-
-        if (!hasData && !isRunning) {
-          await api.runLiveScreening();
-          queryClient.invalidateQueries({ queryKey: ['screening-status'] });
-          queryClient.invalidateQueries({ queryKey: ['screening-results'] });
-        }
-      } catch (error) {
-        console.error('Error auto-starting screening:', error);
-      }
-    }, 2000);
-
-    return () => clearTimeout(autoStartTimer);
-  }, [queryClient]);
 
   const { data: status, error: statusError } = useQuery({
     queryKey: ['screening-status'],
@@ -58,13 +37,13 @@ const ScreenerDashboard: React.FC = () => {
   });
 
   const { data: results, isLoading: resultsLoading, dataUpdatedAt } = useQuery({
-    queryKey: ['screening-results'],
-    queryFn: () => api.getResults(100),
+    queryKey: ['screening-results', tf],
+    queryFn: () => api.getResults(100, undefined, 'correlation', tf),
       refetchInterval: () => {
         try {
           const statusData = queryClient.getQueryData(['screening-status']) as any;
           const isRunning = statusData?.is_running || false;
-          const resultsData = queryClient.getQueryData(['screening-results']) as any;
+          const resultsData = queryClient.getQueryData(['screening-results', tf]) as any;
           const hasData = resultsData?.results?.length > 0 || false;
 
           if (isRunning) return 10000;
@@ -79,6 +58,13 @@ const ScreenerDashboard: React.FC = () => {
       retry: 1,
       retryDelay: 2000,
       staleTime: 8000,
+  });
+
+  const { data: dailyResults } = useQuery({
+    queryKey: ['screening-results', '1d'],
+    queryFn: () => api.getResults(100, undefined, 'correlation', '1d'),
+    staleTime: 30000,
+    enabled: activeTab === 'live' || tf === '1d',
   });
 
   useEffect(() => {
@@ -102,22 +88,8 @@ const ScreenerDashboard: React.FC = () => {
   const formatTime = (date: Date) =>
     date.toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
 
-  const handleRunScreening = async () => {
-    setIsStarting(true);
-    try {
-      await api.runLiveScreening();
-      queryClient.invalidateQueries({ queryKey: ['screening-status'] });
-      queryClient.invalidateQueries({ queryKey: ['screening-results'] });
-      queryClient.invalidateQueries({ queryKey: ['statistics'] });
-      setTimeout(() => setIsStarting(false), 2000);
-    } catch (error) {
-      console.error('Error starting screening:', error);
-      setIsStarting(false);
-      alert('Failed to start screening. Please check console for details.');
-    }
-  };
-
   const isRunning = !!status?.is_running;
+  const demo = !!status?.demo_mode;
 
   return (
     <div className="min-h-screen bg-dark-bg text-gray-200">
@@ -130,33 +102,14 @@ const ScreenerDashboard: React.FC = () => {
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
-            <button
-              onClick={handleRunScreening}
-              disabled={isStarting || isRunning}
-              className="flex items-center gap-2 rounded border border-dark-border bg-dark-surface px-3 py-2 text-sm font-medium text-gray-100 transition-colors hover:border-accent/40 hover:text-accent disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {isStarting ? (
-                <>
-                  <Spinner className="h-3.5 w-3.5" />
-                  Starting…
-                </>
-              ) : isRunning ? (
-                <>
-                  <span className="h-2 w-2 rounded-full bg-accent animate-pulse-dot" />
-                  Running…
-                </>
-              ) : (
-                <>
-                  <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                  Run screening
-                </>
-              )}
-            </button>
-
+            {isRunning && (
+              <span className="flex items-center gap-2 rounded border border-dark-border bg-dark-surface px-3 py-2 text-sm text-gray-100">
+                <span className="h-2 w-2 rounded-full bg-accent animate-pulse-dot" />
+                Running…
+              </span>
+            )}
             <AlertManager />
+            {!demo && (
             <ScreenerSettings
               onSettingsApplied={() => {
                 queryClient.invalidateQueries({ queryKey: ['screening-results'] });
@@ -164,6 +117,7 @@ const ScreenerDashboard: React.FC = () => {
                 queryClient.invalidateQueries({ queryKey: ['statistics'] });
               }}
             />
+            )}
 
             <div className="ml-1 hidden flex-col items-end text-2xs text-muted-dim sm:flex">
               <span className="text-muted">Updated {formatTime(lastUpdate)}</span>
@@ -197,7 +151,34 @@ const ScreenerDashboard: React.FC = () => {
 
         {activeTab === 'screener' && (
           <div className="space-y-5">
-            {stats && <StatisticsPanel stats={stats} />}
+            {demo && (
+              <div className="rounded border border-dark-border bg-dark-surface px-4 py-3 text-2xs text-muted">
+                Public demo: results are refreshed by scheduled scans (daily: 60 assets, 365-day window; hourly: 30 assets,
+                30-day window). Manual runs are disabled here; run your own copy to change settings.
+              </div>
+            )}
+            <div className="flex items-center gap-2" role="group" aria-label="Scan timeframe">
+              {([['1d', 'Daily'], ['1h', 'Hourly']] as const).map(([value, label]) => (
+                <button
+                  key={value}
+                  onClick={() => setTf(value)}
+                  aria-pressed={tf === value}
+                  className={`rounded border px-3 py-1.5 text-xs font-medium transition-colors ${
+                    tf === value
+                      ? 'border-accent/50 bg-accent/10 text-accent'
+                      : 'border-dark-border text-muted hover:text-gray-200'
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+              {tf === '1h' && (
+                <span className="text-2xs text-muted-dim">
+                  Hourly scan · mean reversion over hours to days · details are available for daily pairs
+                </span>
+              )}
+            </div>
+            {tf === '1d' && stats && <StatisticsPanel stats={stats} />}
 
             {resultsLoading ? (
               <div className="rounded border border-dark-border bg-dark-surface p-12 text-center">
@@ -205,12 +186,24 @@ const ScreenerDashboard: React.FC = () => {
                 <p className="mt-3 text-sm text-muted">Scanning pairs…</p>
               </div>
             ) : results && results.results.length > 0 ? (
-              <PairsTable pairs={results.results} />
+              <PairsTable pairs={results.results} detailsEnabled={tf === '1d'} />
             ) : (
               <div className="rounded border border-dark-border bg-dark-surface p-12 text-center">
-                <Spinner className="mx-auto h-6 w-6" />
-                <p className="mt-3 text-sm text-muted">Initializing screener…</p>
-                <p className="mt-1 text-2xs text-muted-dim">First scan may take a few minutes</p>
+                {demo || tf === '1h' ? (
+                  <>
+                    <p className="text-sm text-muted">No pairs in the latest {tf === '1h' ? 'hourly' : 'daily'} scan</p>
+                    <p className="mt-1 text-2xs text-muted-dim">
+                      {demo ? 'The next scheduled scan will refresh this.' : 'Run a screening from the Run screening button.'}
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <p className="text-sm text-muted">No results yet</p>
+                    <p className="mt-1 text-2xs text-muted-dim">
+                      Click <span className="text-gray-300">Run screening</span> to scan the market (a first daily scan takes a few minutes).
+                    </p>
+                  </>
+                )}
               </div>
             )}
 
@@ -224,15 +217,15 @@ const ScreenerDashboard: React.FC = () => {
           </div>
         )}
 
-        {activeTab === 'live' && <LiveMonitor />}
+        {activeTab === 'live' && <LiveMonitor dailyPairs={dailyResults?.results} />}
 
         {activeTab === 'trends' && <TrendsDashboard />}
 
         {/* Footer */}
         <div className="mt-8 text-center text-2xs text-muted-dim">
-          Auto-screening runs continuously · last scan{' '}
+          {demo ? 'Demo · scheduled scans' : 'Screening runs on request'} · last scan{' '}
           {status?.last_session?.completed_at
-            ? new Date(status.last_session.completed_at).toLocaleTimeString()
+            ? new Date(status.last_session.completed_at.endsWith('Z') ? status.last_session.completed_at : status.last_session.completed_at + 'Z').toLocaleString()
             : 'never'}
         </div>
       </div>

@@ -92,6 +92,7 @@ class ScreeningStatusResponse(BaseModel):
     last_session: Optional[ScreeningSessionResponse] = None
     total_pairs_in_db: int
     last_error: Optional[str] = None
+    demo_mode: bool = False
 
 
 class ScreeningResultsResponse(BaseModel):

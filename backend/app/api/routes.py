@@ -167,25 +167,30 @@ async def get_screening_status(background_tasks: BackgroundTasks, db: Session = 
             is_running=status['is_running'] or _screening_in_progress,
             last_session=last_session_response,
             total_pairs_in_db=status['total_pairs_found'],
-            last_error=_last_run_error
+            last_error=_last_run_error,
+            demo_mode=settings.DEMO_MODE
         )
     except Exception as e:
         logger.error(f"Error getting status: {e}")
         return ScreeningStatusResponse(
             is_running=False,
             last_session=None,
-            total_pairs_in_db=0
+            total_pairs_in_db=0,
+            demo_mode=settings.DEMO_MODE
         )
 
 
 @cron_router.post("/cron/run", dependencies=[Depends(require_cron_secret), Depends(expensive_limit)])
 @cron_router.get("/cron/run", dependencies=[Depends(require_cron_secret), Depends(expensive_limit)])
-def cron_run_screening():
+def cron_run_screening(timeframe: str = "1d"):
     """Synchronous screening run for scheduled triggers (e.g. Vercel Cron).
 
     Runs to completion within the request so it works without a persistent
-    background process.
+    background process. `timeframe=1h|4h` runs a coarser-config scan and stores it as its
+    own Blob snapshot (served by `/results?timeframe=`), leaving the daily results untouched.
     """
+    if timeframe != "1d":
+        return _cron_run_timeframe(timeframe)
     try:
         live_screener = get_live_screener()
         live_screener._run_screening()
@@ -199,9 +204,47 @@ def cron_run_screening():
         raise HTTPException(status_code=500, detail="Cron screening failed")
 
 
+CRON_TIMEFRAMES = {"1h", "4h"}
+
+
+def _cron_run_timeframe(timeframe: str):
+    if timeframe not in CRON_TIMEFRAMES:
+        raise HTTPException(status_code=400, detail=f"timeframe must be one of {sorted(CRON_TIMEFRAMES)} or 1d")
+    try:
+        from app.modules.screener import snapshot_store
+        config = ScreeningConfig(
+            timeframe=timeframe,
+            lookback_days=settings.HOURLY_LOOKBACK_DAYS if timeframe == "1h" else max(settings.HOURLY_LOOKBACK_DAYS, 90),
+            max_assets=settings.HOURLY_MAX_ASSETS,
+            min_correlation=settings.SCREENER_MIN_CORRELATION,
+            max_adf_pvalue=settings.SCREENER_MAX_ADF_PVALUE,
+            include_hurst=True,
+            min_volume_usd=settings.SCREENER_MIN_VOLUME_USD,
+        )
+        started = datetime.utcnow()
+        out = PairsScreener(db=None).screen_pairs(config, session_id=int(started.timestamp()), return_stats=True)
+        results = out.get("results", []) if isinstance(out, dict) else (out or [])
+        stats = out.get("stats", {}) if isinstance(out, dict) else {}
+        session = {
+            'id': int(started.timestamp()),
+            'started_at': started.isoformat(),
+            'completed_at': datetime.utcnow().isoformat(),
+            'total_pairs_tested': int(stats.get("pairs_generated", 0) or 0),
+            'pairs_found': len(results),
+            'status': 'completed',
+            'config': {'timeframe': timeframe, 'lookback_days': config.lookback_days, 'max_assets': config.max_assets},
+        }
+        saved = snapshot_store.save_snapshot({'results': results, 'session': session}, f"snapshot-{timeframe}")
+        return {"status": "completed", "timeframe": timeframe, "pairs_found": len(results), "snapshot_saved": saved, "last_session": session}
+    except Exception as e:
+        logger.error(f"Cron {timeframe} screening failed: {e}")
+        raise HTTPException(status_code=500, detail="Cron screening failed")
+
+
 @router.post("/run-live", dependencies=[Depends(expensive_limit)])
 async def run_live_screening(background_tasks: BackgroundTasks):
     """Manually trigger live screener to run (fetches fresh data from Binance)"""
+    _reject_in_demo()
     try:
         live_screener = get_live_screener()
         
@@ -223,6 +266,11 @@ async def run_live_screening(background_tasks: BackgroundTasks):
         raise HTTPException(status_code=500, detail="Failed to start screening")
 
 
+def _reject_in_demo() -> None:
+    if settings.DEMO_MODE:
+        raise HTTPException(status_code=403, detail="Disabled in the public demo: results are refreshed by scheduled scans")
+
+
 @router.post("/run", response_model=ScreeningSessionResponse, dependencies=[Depends(expensive_limit)])
 async def run_screening(
     config: ScreeningConfigRequest,
@@ -231,7 +279,8 @@ async def run_screening(
 ):
     """Start a new screening session (runs in memory)"""
     global _screening_in_progress
-    
+
+    _reject_in_demo()
     if _screening_in_progress or get_live_screener().get_status()['is_running']:
         raise HTTPException(status_code=400, detail="Screening already in progress")
     _screening_in_progress = True  # claimed synchronously; released by the background task
@@ -319,12 +368,23 @@ async def get_screening_results(
     max_spread_std: Optional[float] = None,
     updated_since: Optional[float] = None,  # Unix timestamp
     session_id: Optional[int] = None,
+    timeframe: Optional[str] = None,
     db: Session = Depends(get_db)
 ):
-    """Get screening results from live screener (in-memory)"""
+    """Get screening results from live screener (in-memory).
+
+    `timeframe` other than 1d serves the latest scheduled scan of that timeframe from the Blob snapshot.
+    """
+    if timeframe and timeframe != '1d' and timeframe not in CRON_TIMEFRAMES:
+        raise HTTPException(status_code=400, detail=f"timeframe must be one of {sorted(CRON_TIMEFRAMES)} or 1d")
     try:
         live_screener = get_live_screener()
-        results = live_screener.get_results()
+        if timeframe and timeframe != '1d':
+            from app.modules.screener import snapshot_store
+            snap = snapshot_store.load_snapshot(f"snapshot-{timeframe}") or {}
+            results = list(snap.get('results') or [])
+        else:
+            results = live_screener.get_results()
         
         # Filter by correlation
         if min_correlation:
