@@ -64,6 +64,7 @@ class LiveScreener:
                 .first()
             )
             if latest_session is None:
+                self._load_from_snapshot()
                 return
 
             rows = (
@@ -73,6 +74,7 @@ class LiveScreener:
                 .all()
             )
             if not rows:
+                self._load_from_snapshot()
                 return
 
             results = []
@@ -121,6 +123,30 @@ class LiveScreener:
             except Exception:
                 pass
     
+    def _load_from_snapshot(self):
+        """Fallback restore from the Blob snapshot (serverless hosts with no database state)."""
+        from app.modules.screener import snapshot_store
+        snap = snapshot_store.load_snapshot()
+        if not snap or not snap.get('results'):
+            return
+        self.current_results = snap['results']
+        info = snap.get('session') or {}
+        self.last_session_info = info or None
+        stamp = info.get('completed_at') or info.get('started_at')
+        try:
+            self.last_screening_time = datetime.fromisoformat(stamp) if stamp else None
+        except ValueError:
+            self.last_screening_time = None
+        logger.info(f"Restored {len(self.current_results)} pairs from Blob snapshot")
+
+    def _save_snapshot(self):
+        from app.modules.screener import snapshot_store
+        if snapshot_store.enabled():
+            snapshot_store.save_snapshot({
+                'results': self.current_results,
+                'session': self.last_session_info,
+            })
+
     def start(self):
         """Start the live screener"""
         if self._loop_active:
@@ -177,7 +203,20 @@ class LiveScreener:
     def get_results(self) -> List[Dict]:
         """Get current screening results (thread-safe)"""
         with self._lock:
+            empty = not self.current_results and not self.is_running
+        if empty:
+            self._refresh_snapshot_if_due()
+        with self._lock:
             return self.current_results.copy()
+
+    def _refresh_snapshot_if_due(self, min_interval: float = 30.0):
+        """Warm instances created before a cron run wrote the snapshot: re-read it, throttled."""
+        import time
+        now = time.monotonic()
+        if now - getattr(self, '_snapshot_checked_at', -1e9) < min_interval:
+            return
+        self._snapshot_checked_at = now
+        self._load_from_snapshot()
     
     def get_last_session(self) -> Optional[Dict]:
         """Get last session info"""
@@ -346,6 +385,7 @@ class LiveScreener:
 
                 self.last_screening_time = datetime.utcnow()
             
+            self._save_snapshot()
             logger.info(f"Live screening completed: {len(results)} pairs found")
             
         except Exception as e:
