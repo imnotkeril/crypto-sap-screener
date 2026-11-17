@@ -153,8 +153,8 @@ const ScreenerDashboard: React.FC = () => {
           <div className="space-y-5">
             {demo && (
               <div className="rounded border border-dark-border bg-dark-surface px-4 py-3 text-2xs text-muted">
-                Public demo: results are refreshed by scheduled scans (daily: 60 assets, 365-day window; hourly: 30 assets,
-                30-day window). Manual runs are disabled here; run your own copy to change settings.
+                Public demo: results come from scheduled scans (daily: top 60 assets by volume, 365-day window; hourly: about
+                50 crypto majors, 30-day window). Manual runs are disabled here: run your own copy to scan on demand.
               </div>
             )}
             <div className="flex items-center gap-2" role="group" aria-label="Scan timeframe">
