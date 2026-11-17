@@ -133,7 +133,7 @@ const ScreenerDashboard: React.FC = () => {
 
         {/* Tabs */}
         <nav aria-label="Sections" className="mb-5 flex gap-1 border-b border-dark-border">
-          {TABS.map((tab) => (
+          {TABS.filter((tab) => !(demo && tab.id === 'trends')).map((tab) => (
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
