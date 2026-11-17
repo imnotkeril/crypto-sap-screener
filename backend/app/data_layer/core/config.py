@@ -11,7 +11,7 @@ from datetime import datetime, timezone
 from typing import List
 
 from pydantic import field_validator
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 def _split_csv(v):
@@ -78,9 +78,7 @@ class DataLayerSettings(BaseSettings):
     def history_start(self) -> datetime:
         return datetime.strptime(self.DATALAYER_HISTORY_START, "%Y-%m-%d").replace(tzinfo=timezone.utc)
 
-    class Config:
-        env_file = ".env"
-        case_sensitive = True
+    model_config = SettingsConfigDict(env_file=".env", case_sensitive=True)
 
 
 settings = DataLayerSettings()
