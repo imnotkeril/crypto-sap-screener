@@ -345,6 +345,7 @@ docker compose up -d --build
 - API: the Python runtime (`vercel.json`, `backend/serverless_entry.py`), region Frankfurt, function timeout 300 s.
 - A daily cron (`/api/v1/screener/cron/run`, protected by `CRON_SECRET`) scans the top `SCREENER_MAX_ASSETS` (60) assets and writes the latest results as `sap/snapshot.json` into a Vercel Blob store (`BLOB_READ_WRITE_TOKEN`, see `backend/app/modules/screener/snapshot_store.py`). Serverless instances keep no state, so every cold start restores results from that snapshot.
 - A second cron (`?timeframe=1h`) scans ~50 crypto majors on 1-hour candles over 30 days with Benjamini-Hochberg FDR control and stores it as `sap/snapshot-1h.json`; the UI has a Daily / Hourly toggle. `DEMO_MODE=true` disables manual runs on the public API.
+- A second cron (`?timeframe=1h`) scans ~50 crypto majors (`HOURLY_ASSETS`) on 1-hour candles over 30 days with Benjamini-Hochberg FDR control and stores it as `sap/snapshot-1h.json`; the UI has a Daily / Hourly toggle. `DEMO_MODE=true` disables manual runs on the public API.
 - The live monitor fetches candles from Binance on demand. The demo API has no `API_KEY` (the UI has no key support), so it is open and rate limited: do not point real keys or private data at it.
 
 The repository also contains configuration for other hosts. Treat each as a starting point.
