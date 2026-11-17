@@ -89,14 +89,16 @@ Included but separate: a **market data layer** (`backend/app/data_layer`), a sta
 
 ## Screenshots
 
+All six are taken from the [live demo](https://crypto-sap-screener.vercel.app) (real Binance data).
+
 | | |
 |---|---|
 | ![Daily scan](docs/img/screener.png) | ![Hourly scan](docs/img/screener-hourly.png) |
-| Daily scan: ranked pairs with score, ADF p-value, half-life and net edge | Hourly scan: mean reversion over hours to days |
-| ![Pair details](docs/img/pair-details.png) | ![Live monitor](docs/img/live-monitor.png) |
-| Spread analysis: z-score range, deviation percentile, mean-reversion statistics | Live monitor: live z-score vs the daily fit, hedge direction, edge |
-| ![Backtest](docs/img/backtest-results.png) | |
-| Backtest of a z-score strategy on one pair (local stack) | |
+| **Daily scan.** Ranked pairs with score, ADF p-value, half-life and net edge | **Hourly scan.** Mean reversion over hours to days, FDR-controlled |
+| ![Pair details](docs/img/pair-details.png) | ![Spread chart](docs/img/spread-chart.png) |
+| **Spread analysis.** z-score range, deviation percentile, mean-reversion statistics | **Spread chart.** One year of the pair's z-score with the ±1/2/3σ bands |
+| ![Live monitor](docs/img/live-monitor.png) | ![Backtest](docs/img/backtest-results.png) |
+| **Live monitor.** Live z-score vs the daily fit, hedge direction, expected edge | **Backtest.** Z-score entry/exit with costs: return, Sharpe, drawdown, MAE, Kelly |
 
 ## Stack
 
@@ -143,9 +145,9 @@ Included but separate: a **market data layer** (`backend/app/data_layer`), a sta
 ├── LICENSE, SECURITY.md            MIT license, vulnerability reporting policy
 ├── .env.example                    Every variable the backend reads (names and comments only)
 ├── docker-compose.yml              Full stack: redis, postgres, datalayer, backend, frontend
-├── docker-compose.datalayer.yml    Data layer with its own redis and postgres
 ├── Dockerfile                      Backend image (also used by the data layer)
-├── railway.json, railway.datalayer.json, vercel.json
+├── deploy/                         Optional hosting: docker-compose.datalayer.yml, railway/, huggingface/
+├── vercel.json                     Vercel config for the API (daily and hourly cron)
 ├── package.json                    Root scripts: dev (backend + frontend via concurrently)
 └── pyproject.toml                  Project metadata and ruff/Vercel settings
 ```
@@ -386,7 +388,7 @@ docker compose up -d --build
 - Data persists in named volumes (`app-redis`, `app-postgres`, `app-backend-data`).
 - The frontend nginx image adds `X-API-Key` to every proxied `/api/` request with the value of `API_KEY`. Anyone who can reach the frontend port can use the API. Keep the frontend bound to localhost or behind authentication.
 
-`docker-compose.datalayer.yml` runs only the data layer with its own Redis and PostgreSQL. It hard-codes the PostgreSQL password `datalayer` and publishes ports 6379, 5432 and 8001 on all interfaces. Change both before any use outside a laptop.
+`deploy/docker-compose.datalayer.yml` runs only the data layer with its own Redis and PostgreSQL. It hard-codes the PostgreSQL password `datalayer` and publishes ports 6379, 5432 and 8001 on all interfaces. Change both before any use outside a laptop.
 
 `docker compose config` validates both files. The images were not built in the verification of this README.
 
@@ -404,8 +406,8 @@ The repository also contains configuration for other hosts. Treat each as a star
 
 | File | Target | Status |
 |---|---|---|
-| `Dockerfile` | Docker, Railway (`railway.json` uses the Dockerfile builder) | Compose validated; image build not run here |
-| `railway.json`, `railway.datalayer.json` | Railway (backend, data layer as a worker) | Present; not run here |
+| `Dockerfile` | Docker, Railway (`deploy/railway/railway.json` uses the Dockerfile builder; point Railway's config path at it) | Compose validated; image build not run here |
+| `deploy/railway/railway.json`, `deploy/railway/railway.datalayer.json` | Railway (backend, data layer as a worker) | Present; not run here |
 | `vercel.json`, `backend/serverless_entry.py`, `pyproject.toml` `[tool.vercel]` | Vercel Python runtime with a daily cron on `/api/v1/screener/cron/run` | Present; no long-lived background process exists on this host, so the cron route is the screening trigger |
 | `frontend/vercel.json`, `frontend/nixpacks.toml`, `frontend/railway.json` | Frontend static hosting | Present; the frontend has no server-side API key, so `VITE_API_URL` pointing at a protected API will return 401 |
 | `docs/deploy/`, `docs/RUNBOOK.md` | Deployment and operating notes | See `docs/RUNBOOK.md` for the current procedure |

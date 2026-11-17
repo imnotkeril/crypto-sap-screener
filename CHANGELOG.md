@@ -4,6 +4,7 @@
 
 ## [1.0.0] - 2026-11-17
 First public release: audited screener, public demo and showcase documentation.
+- Repository tidy: hosting configs moved under `deploy/` (railway, data-layer compose), six README screenshots taken from the live demo, stale branches and deployment records removed.
 - README: hero, badges, architecture diagram, fresh screenshots of the live demo, social preview image (`docs/img/social-preview.png`).
 - Live demo on Vercel: Blob snapshot persistence for serverless, daily cron scan, frontend wired through `VITE_API_URL` (2026-11-17). Dependabot now groups minor/patch updates and skips majors.
 - Final polish: FastAPI lifespan instead of deprecated `on_event`, pydantic `SettingsConfigDict`, unique OpenAPI ids for the cron route, ruff clean, CONTRIBUTING, issue/PR templates, Dependabot.
