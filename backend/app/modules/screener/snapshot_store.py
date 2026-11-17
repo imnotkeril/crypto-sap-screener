@@ -15,7 +15,13 @@ import httpx
 
 logger = logging.getLogger(__name__)
 
-PATHNAME = "sap/snapshot.json"
+DEFAULT_NAME = "snapshot"
+
+
+def _pathname(name: str) -> str:
+    return f"sap/{name}.json"
+
+
 BLOB_API_URL = os.getenv("VERCEL_BLOB_API_URL", "https://vercel.com/api/blob")
 
 
@@ -27,11 +33,11 @@ def enabled() -> bool:
     return _token() is not None
 
 
-def _public_url() -> Optional[str]:
+def _public_url(name: str = DEFAULT_NAME) -> Optional[str]:
     """Public URL of the snapshot. SNAPSHOT_URL overrides; else derived from the token
     (vercel_blob_rw_<storeId>_<secret> -> https://<storeid>.public.blob.vercel-storage.com)."""
     override = os.getenv("SNAPSHOT_URL")
-    if override:
+    if override and name == DEFAULT_NAME:
         return override
     token = _token()
     if not token:
@@ -39,10 +45,10 @@ def _public_url() -> Optional[str]:
     parts = token.split("_")
     if len(parts) < 5:
         return None
-    return f"https://{parts[3].lower()}.public.blob.vercel-storage.com/{PATHNAME}"
+    return f"https://{parts[3].lower()}.public.blob.vercel-storage.com/{_pathname(name)}"
 
 
-def save_snapshot(payload: Dict[str, Any]) -> bool:
+def save_snapshot(payload: Dict[str, Any], name: str = DEFAULT_NAME) -> bool:
     """Write the snapshot, replacing the previous one. Never raises."""
     token = _token()
     if not token:
@@ -51,7 +57,7 @@ def save_snapshot(payload: Dict[str, Any]) -> bool:
         body = json.dumps(payload, default=str).encode("utf-8")
         r = httpx.put(
             BLOB_API_URL,
-            params={"pathname": PATHNAME},
+            params={"pathname": _pathname(name)},
             content=body,
             timeout=15,
             headers={
@@ -73,9 +79,9 @@ def save_snapshot(payload: Dict[str, Any]) -> bool:
         return False
 
 
-def load_snapshot() -> Optional[Dict[str, Any]]:
+def load_snapshot(name: str = DEFAULT_NAME) -> Optional[Dict[str, Any]]:
     """Read the latest snapshot, or None when missing or unavailable. Never raises."""
-    url = _public_url()
+    url = _public_url(name)
     if not url:
         return None
     try:

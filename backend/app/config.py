@@ -55,6 +55,9 @@ class Settings(BaseSettings):
     # Security
     API_KEY: Optional[str] = None  # when set, all /api/v1 routes need header X-API-Key
     CRON_SECRET: Optional[str] = None  # Bearer secret for /screener/cron/run
+    DEMO_MODE: bool = False  # read-only public demo: /run and /run-live are disabled, results come from the cron scans
+    HOURLY_MAX_ASSETS: int = 30  # assets in the hourly cron scan
+    HOURLY_LOOKBACK_DAYS: int = 30
     REQUIRE_AUTH: bool = False  # refuse to start without API_KEY (production)
     CORS_ORIGINS: str = 'http://localhost:5173,http://127.0.0.1:5173,http://localhost:3100'
 

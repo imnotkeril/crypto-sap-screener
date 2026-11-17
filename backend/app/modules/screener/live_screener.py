@@ -221,10 +221,18 @@ class LiveScreener:
     def get_last_session(self) -> Optional[Dict]:
         """Get last session info"""
         with self._lock:
+            empty = self.last_session_info is None and not self.is_running
+        if empty:
+            self._refresh_snapshot_if_due()
+        with self._lock:
             return self.last_session_info.copy() if self.last_session_info else None
     
     def get_status(self) -> Dict:
         """Get current screener status"""
+        with self._lock:
+            empty = not self.current_results and not self.is_running
+        if empty:
+            self._refresh_snapshot_if_due()
         with self._lock:
             return {
                 'is_running': self.is_running,

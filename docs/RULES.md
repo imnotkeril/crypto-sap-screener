@@ -88,7 +88,7 @@ Defaults: `entry_z = 2.0`, `taker_fee_bps = 5`, `slippage_bps = 2` (so `fee_slip
 `_test_pair`, output `composite_score` in the range 0-100:
 
     correlation_score = corr                                       (0..1)
-    adf_score         = clamp(1 - adf_pvalue / 0.1, 0, 1)          (0.1 is hard-coded)
+    adf_score         = clamp(1 - adf_pvalue / max_adf_pvalue, 0, 1)   (max_adf_pvalue from the config, 0.1 if unset)
     hurst_score       = clamp((0.5 - H) / 0.5, 0, 1)   if H computed, else 0
     net_edge_score    = clamp(net_edge_pct / gross_edge_pct, 0, 1) if gross > 0, else 0
 

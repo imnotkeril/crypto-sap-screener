@@ -18,6 +18,12 @@ from app.modules.shared.models import ScreeningConfig
 logger = logging.getLogger(__name__)
 
 
+def adf_score_for(adf_pvalue: float, max_adf_pvalue: float) -> float:
+    """0..1 score, 1 at p=0 and 0 at the configured p-value threshold (clamped)."""
+    scale = max_adf_pvalue if max_adf_pvalue and max_adf_pvalue > 0 else 0.1
+    return max(0.0, min(1.0, 1.0 - adf_pvalue / scale))
+
+
 class PairsScreener:
     """Main screener for finding cointegrated pairs"""
     
@@ -497,8 +503,7 @@ class PairsScreener:
                 hurst = 0.5
             
             correlation_score = corr  # 0-1
-            adf_score = 1.0 - (adf_pvalue / 0.1)  # 0-1 (better if lower p-value)
-            adf_score = max(0.0, min(1.0, adf_score))  # Clamp to [0, 1]
+            adf_score = adf_score_for(adf_pvalue, config.max_adf_pvalue)
             hurst_score = (0.5 - hurst) / 0.5 if result.get('hurst_exponent') is not None else 0.0  # 0-1 (better if H < 0.5: mean reverting)
             hurst_score = max(0.0, min(1.0, hurst_score))  # Clamp to [0, 1]
 

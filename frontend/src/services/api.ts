@@ -81,6 +81,7 @@ export interface ScreeningStatus {
   last_session?: ScreeningSession;
   total_pairs_in_db: number;
   last_error?: string | null;
+  demo_mode?: boolean;
 }
 
 export interface ScreeningResults {
@@ -249,10 +250,14 @@ export const api = {
   getResults: async (
     limit: number = 50,
     min_correlation?: number,
-    sort_by: string = 'correlation'
+    sort_by: string = 'correlation',
+    timeframe?: string
   ): Promise<ScreeningResults> => {
     try {
       const params: any = { limit, sort_by };
+      if (timeframe && timeframe !== '1d') {
+        params.timeframe = timeframe;
+      }
       if (min_correlation !== undefined) {
         params.min_correlation = min_correlation;
       }
