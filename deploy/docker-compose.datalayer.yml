@@ -1,7 +1,7 @@
 # Local/self-hosted run of the Market Data Layer (backend/app/data_layer).
 #
 # Usage:
-#   docker compose -f docker-compose.datalayer.yml up -d
+#   docker compose -f deploy/docker-compose.datalayer.yml up -d   # run from the repo root
 #
 # This starts:
 #   - redis     (real-time ticker/candle/indicator cache)
@@ -36,7 +36,7 @@ services:
 
   datalayer:
     build:
-      context: .
+      context: ..
       dockerfile: Dockerfile
     restart: unless-stopped
     command: ["python", "-m", "app.data_layer.main"]

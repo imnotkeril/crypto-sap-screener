@@ -8,12 +8,12 @@ loops).
 
 ## Option A: Run locally with Docker (free)
 
-A self-contained `docker-compose.datalayer.yml` is provided at the repo
+A self-contained `deploy/docker-compose.datalayer.yml` is provided at the repo
 root, including its own Redis and Postgres containers - no external
 services or paid hosting required:
 
 ```bash
-docker compose -f docker-compose.datalayer.yml up -d --build
+docker compose -f deploy/docker-compose.datalayer.yml up -d --build
 ```
 
 Then check `http://localhost:8001/health`. Data is persisted in Docker
@@ -37,7 +37,7 @@ service.
 
 1. In Railway, create a **new service** in the same project, pointing at
    this repository (same repo as the existing backend service).
-2. Set **Config file path** to `railway.datalayer.json` (Railway dashboard ->
+2. Set **Config file path** to `deploy/railway/railway.datalayer.json` (Railway dashboard ->
    service Settings -> Config-as-code).
 3. Add a **Redis** plugin/service to the project if one doesn't already
    exist, and set `REDIS_URL` on this service to its connection string.
