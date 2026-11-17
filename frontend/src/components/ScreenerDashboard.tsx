@@ -217,7 +217,7 @@ const ScreenerDashboard: React.FC = () => {
           </div>
         )}
 
-        {activeTab === 'live' && <LiveMonitor dailyPairs={dailyResults?.results} />}
+        {activeTab === 'live' && <LiveMonitor dailyPairs={dailyResults?.results} showHistory={!demo} />}
 
         {activeTab === 'trends' && <TrendsDashboard />}
 

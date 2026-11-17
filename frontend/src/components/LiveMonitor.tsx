@@ -58,7 +58,7 @@ const Tile: React.FC<{ label: string; value: string; hint?: string; tone?: strin
 );
 
 /** Expanded row: live numbers joined with the daily screen stats of the same pair. */
-const PairDetailCard: React.FC<{ p: LivePairSnapshot; daily?: PairResult; threshold: number }> = ({ p, daily, threshold }) => {
+const PairDetailCard: React.FC<{ p: LivePairSnapshot; daily?: PairResult; threshold: number; showHistory: boolean }> = ({ p, daily, threshold, showHistory }) => {
   const deviation = p.zscore - p.daily_zscore;
   const stretched = Math.abs(p.zscore) >= threshold;
   const richA = p.zscore > 0; // spread = A - (alpha + beta * B)
@@ -102,16 +102,18 @@ const PairDetailCard: React.FC<{ p: LivePairSnapshot; daily?: PairResult; thresh
         )}
       </div>
 
-      <Sparkline assetA={p.asset_a} assetB={p.asset_b} active />
+      {showHistory && <Sparkline assetA={p.asset_a} assetB={p.asset_b} active />}
     </div>
   );
 };
 
 interface LiveMonitorProps {
   dailyPairs?: PairResult[];
+  /** the z-score history is kept in backend memory: hide it on stateless (serverless) hosts */
+  showHistory?: boolean;
 }
 
-const LiveMonitor: React.FC<LiveMonitorProps> = ({ dailyPairs }) => {
+const LiveMonitor: React.FC<LiveMonitorProps> = ({ dailyPairs, showHistory = true }) => {
   const [expanded, setExpanded] = useState<string | null>(null);
 
   const { data: snapshot, isLoading } = useQuery({
@@ -225,6 +227,7 @@ const LiveMonitor: React.FC<LiveMonitorProps> = ({ dailyPairs }) => {
                             p={p}
                             daily={dailyPairs?.find((d) => d.asset_a === p.asset_a && d.asset_b === p.asset_b)}
                             threshold={threshold}
+                            showHistory={showHistory}
                           />
                         </td>
                       </tr>
