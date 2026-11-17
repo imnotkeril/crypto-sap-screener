@@ -340,7 +340,13 @@ docker compose up -d --build
 
 ## Deployment
 
-The repository contains configuration for several hosts. None of them has been verified as deployed in this repository. Treat each as a starting point.
+**Live demo:** https://crypto-sap-screener.vercel.app (frontend) talking to a Vercel-hosted API. It runs on Vercel only, with these pieces:
+
+- API: the Python runtime (`vercel.json`, `backend/serverless_entry.py`), region Frankfurt, function timeout 300 s.
+- A daily cron (`/api/v1/screener/cron/run`, protected by `CRON_SECRET`) scans the top `SCREENER_MAX_ASSETS` (60) assets and writes the latest results as `sap/snapshot.json` into a Vercel Blob store (`BLOB_READ_WRITE_TOKEN`, see `backend/app/modules/screener/snapshot_store.py`). Serverless instances keep no state, so every cold start restores results from that snapshot.
+- The live monitor fetches candles from Binance on demand. The demo API has no `API_KEY` (the UI has no key support), so it is open and rate limited: do not point real keys or private data at it.
+
+The repository also contains configuration for other hosts. Treat each as a starting point.
 
 | File | Target | Status |
 |---|---|---|
@@ -378,7 +384,7 @@ Other known gaps:
 - **No migrations.** See Database and migrations.
 - **Rate limits are per process and in memory.** Multiple workers or restarts reset them.
 - **`backend/run.py` is a dev entry point** (127.0.0.1, `reload=True`). With `API_KEY` unset the API is open to local processes. Set `API_KEY` and `REQUIRE_AUTH=true` for anything shared.
-- **Vercel and Railway deployments are not verified** in this repository (see Deployment).
+- **Railway and Docker hosting are not verified** in this repository; only the Vercel setup above is running (see Deployment). The demo scans 60 assets once a day, so it shows few pairs and its "last scan" label can read "never" until a snapshot loads.
 - **Screening results are in memory.** The live screener keeps the current results in process memory and restores the latest session from the database on start.
 - **ADF score uses a fixed 0.1 scale.** `adf_score = 1 - p / 0.1` ignores `max_adf_pvalue` (see `docs/RULES.md` section 7).
 
