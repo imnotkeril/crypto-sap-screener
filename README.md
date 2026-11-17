@@ -1,27 +1,79 @@
-# Statistical Arbitrage Pairs Screener (crypto-sap-screener)
-
-[![CI](https://github.com/imnotkeril/crypto-sap-screener/actions/workflows/ci.yml/badge.svg)](https://github.com/imnotkeril/crypto-sap-screener/actions/workflows/ci.yml)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-![Python 3.11](https://img.shields.io/badge/python-3.11-blue)
-![React 18](https://img.shields.io/badge/react-18-61dafb)
+<h1 align="center">SAP Screener</h1>
+<p align="center"><b>Statistical-arbitrage pairs screener for crypto perpetuals</b><br>
+Cointegration, mean-reversion half-life, expected net edge after costs, Kalman live z-score and a backtester, in a FastAPI + React dashboard.</p>
 
 <p align="center">
+  <a href="https://crypto-sap-screener.vercel.app"><b>Live demo</b></a>
+  &nbsp;·&nbsp;
+  <a href="#quickstart">Quickstart</a>
+  &nbsp;·&nbsp;
   <a href="docs/RULES.md">Formulas</a>
   &nbsp;·&nbsp;
   <a href="docs/RUNBOOK.md">Runbook</a>
   &nbsp;·&nbsp;
-  <a href="llms.txt">API reference (llms.txt)</a>
-  &nbsp;·&nbsp;
-  <a href="CONTRIBUTING.md">Contributing</a>
+  <a href="llms.txt">API reference</a>
   &nbsp;·&nbsp;
   <a href="CHANGELOG.md">Changelog</a>
 </p>
 
-A crypto pairs screener for statistical arbitrage. It loads Binance USDT futures prices through [ccxt](https://github.com/ccxt/ccxt), tests pairs of assets for cointegration, ranks them by a composite score that includes expected net edge after costs, and tracks the intraday z-score of the top pairs with a Kalman-filter hedge ratio. Results are shown in a React dashboard and served by a FastAPI API.
+<p align="center">
+  <a href="https://github.com/imnotkeril/crypto-sap-screener/actions/workflows/ci.yml"><img src="https://github.com/imnotkeril/crypto-sap-screener/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="License: MIT"></a>
+  <img src="https://img.shields.io/badge/tests-140%20passed-brightgreen" alt="140 tests">
+  <img src="https://img.shields.io/badge/ruff-clean-261230?logo=ruff&logoColor=white" alt="ruff clean">
+  <img src="https://img.shields.io/badge/mypy-clean-2a6db2" alt="mypy clean">
+  <img src="https://img.shields.io/badge/Python-3.11-3776AB?logo=python&logoColor=white" alt="Python 3.11">
+  <a href="https://fastapi.tiangolo.com/"><img src="https://img.shields.io/badge/FastAPI-backend-009688?logo=fastapi&logoColor=white" alt="FastAPI"></a>
+  <img src="https://img.shields.io/badge/React-18-61dafb?logo=react&logoColor=black" alt="React 18">
+  <img src="https://img.shields.io/badge/TypeScript-strict-3178C6?logo=typescript&logoColor=white" alt="TypeScript">
+  <img src="https://img.shields.io/badge/Deployed%20on-Vercel-000000?logo=vercel&logoColor=white" alt="Vercel">
+</p>
+
+<p align="center">
+  <a href="https://crypto-sap-screener.vercel.app"><img src="docs/img/screener.png" alt="SAP Screener: ranked cointegrated pairs" width="900"></a>
+</p>
 
 > **Disclaimer.** This is a research and educational tool. It is not investment advice. Statistical tests, backtests and simulated results do not guarantee future performance, and trading can lose all capital. The software **never sends orders** to any exchange. It has no order-placement code path and no live trading keys are used.
 >
 > **Survivorship bias.** The universe is today's top-volume listed Binance perpetuals: delisted assets are absent and assets with under 80% of the requested history are dropped, so results look better than a point-in-time universe would.
+
+## Try it
+
+**[crypto-sap-screener.vercel.app](https://crypto-sap-screener.vercel.app)** is a read-only public demo. It shows the latest scheduled scans (the demo never runs a scan on request):
+
+| Scan | Universe | Window | Refreshed |
+|---|---|---|---|
+| Daily | top 60 Binance USDT perpetuals by volume | 365 days of daily candles | once a day |
+| Hourly | about 50 crypto majors | 30 days of hourly candles, Benjamini-Hochberg FDR control | once a day |
+
+Open a pair for its spread analysis, or the **Live monitor** tab for the intraday divergence of the daily pairs (live prices from Binance, Kalman-filtered hedge ratio). To scan on demand with your own settings, [run it locally](#quickstart).
+
+## Highlights
+
+- **Cointegration, not just correlation.** Engle-Granger in both directions with a Bonferroni adjustment; optional Benjamini-Hochberg FDR across thousands of candidate pairs.
+- **Trade-ability, not just statistics.** Half-life of mean reversion, Hurst exponent and an **expected net edge** after fees, slippage and funding.
+- **Live divergence monitor.** Re-fits the hedge ratio with a Kalman filter on 5-minute candles and flags unusual z-scores.
+- **Backtester** with transaction costs, rolling hedge ratios and next-bar fills; **position calculator**; alerts and CSV/Excel export.
+- **Engineered like a product.** 140 tests (including regression tests for 10 audit findings), ruff and mypy clean, CI on every push, security notes and a runbook.
+
+## Architecture
+
+```mermaid
+flowchart LR
+    B[(Binance USDT-M<br/>futures API)] -->|ccxt candles| API
+    subgraph Backend [FastAPI backend]
+        API[Screener engine<br/>correlation, Engle-Granger,<br/>half-life, Hurst, net edge]
+        LIVE[Intraday monitor<br/>Kalman hedge, live z-score]
+        BT[Backtester and<br/>position calculator]
+        API --> STORE[(Results store<br/>SQLite / PostgreSQL<br/>or Blob snapshot)]
+        API --> LIVE
+    end
+    CRON[Scheduled scans<br/>cron] --> API
+    STORE --> REST[REST /api/v1]
+    LIVE --> REST
+    BT --> REST
+    REST --> UI[React + Vite dashboard<br/>screener, live monitor, backtest]
+```
 
 ## What it does
 
@@ -37,14 +89,14 @@ Included but separate: a **market data layer** (`backend/app/data_layer`), a sta
 
 ## Screenshots
 
-Taken on a local stack with real Binance data (1d scan, 1035 pairs tested, 3 found).
-
 | | |
 |---|---|
-| ![Screener results](docs/img/screener.png) | ![Pair details](docs/img/pair-details.png) |
-| Screener: ranked pairs, correlation matrix | Pair details: z-score, beta, Hurst, spread stats |
-| ![Live monitor](docs/img/live-monitor.png) | ![Backtest](docs/img/backtest-results.png) |
-| Live monitor: intraday z-score with Kalman hedge | Backtest of a z-score strategy on one pair |
+| ![Daily scan](docs/img/screener.png) | ![Hourly scan](docs/img/screener-hourly.png) |
+| Daily scan: ranked pairs with score, ADF p-value, half-life and net edge | Hourly scan: mean reversion over hours to days |
+| ![Pair details](docs/img/pair-details.png) | ![Live monitor](docs/img/live-monitor.png) |
+| Spread analysis: z-score range, deviation percentile, mean-reversion statistics | Live monitor: live z-score vs the daily fit, hedge direction, edge |
+| ![Backtest](docs/img/backtest-results.png) | |
+| Backtest of a z-score strategy on one pair (local stack) | |
 
 ## Stack
 
