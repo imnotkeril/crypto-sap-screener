@@ -21,8 +21,8 @@ const PairsTable: React.FC<PairsTableProps> = ({ pairs, detailsEnabled = true })
   const [showModal, setShowModal] = useState(false);
   
   // Filter states
-  const [minCorrelation, setMinCorrelation] = useState<number>(0.8);
-  const [maxADFPValue, setMaxADFPValue] = useState<number>(0.1);
+  const [minCorrelation, setMinCorrelation] = useState<number>(0);
+  const [maxADFPValue, setMaxADFPValue] = useState<number>(1);
   const [minHurst, setMinHurst] = useState<number | null>(null);
   const [maxHurst, setMaxHurst] = useState<number | null>(null);
   const [minZScore, setMinZScore] = useState<number | null>(null);
@@ -364,8 +364,8 @@ const PairsTable: React.FC<PairsTableProps> = ({ pairs, detailsEnabled = true })
             </div>
             <button
               onClick={() => {
-                setMinCorrelation(0.8);
-                setMaxADFPValue(0.1);
+                setMinCorrelation(0);
+                setMaxADFPValue(1);
                 setMinHurst(null);
                 setMaxHurst(null);
                 setMinZScore(null);
