@@ -58,6 +58,13 @@ class Settings(BaseSettings):
     DEMO_MODE: bool = False  # read-only public demo: /run and /run-live are disabled, results come from the cron scans
     HOURLY_MAX_ASSETS: int = 30  # assets in the hourly cron scan
     HOURLY_LOOKBACK_DAYS: int = 30
+    HOURLY_MIN_CORRELATION: float = 0.8
+    HOURLY_MAX_ADF_PVALUE: float = 0.10  # with Benjamini-Hochberg FDR across all tested pairs
+    # Crypto majors for the hourly scan (equity/commodity perps have no 24/7 candles and fall out of an hourly window).
+    # Comma-separated; set empty to use the top assets by volume instead.
+    HOURLY_ASSETS: str = ("BTC,ETH,SOL,BNB,XRP,ADA,DOGE,LINK,AVAX,DOT,LTC,BCH,ATOM,NEAR,APT,ARB,OP,INJ,SUI,TIA,FIL,AAVE,UNI,"
+                          "ETC,HBAR,ICP,TRX,XLM,ENA,1000PEPE,1000SHIB,WLD,SEI,JUP,FET,ONDO,STX,TAO,ZEC,HYPE,AVAX,MKR,CRV,LDO,"
+                          "RUNE,ALGO,VET,GRT,SAND,MANA")
     REQUIRE_AUTH: bool = False  # refuse to start without API_KEY (production)
     CORS_ORIGINS: str = 'http://localhost:5173,http://127.0.0.1:5173,http://localhost:3100'
 
