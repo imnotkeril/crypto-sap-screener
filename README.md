@@ -91,7 +91,7 @@ Included but separate: a **market data layer** (`backend/app/data_layer`), a sta
 
 ## Screenshots
 
-All six are taken from the [live demo](https://crypto-sap-screener.vercel.app) (real Binance data).
+All six are 1920x1080 and taken from the [live demo](https://crypto-sap-screener.vercel.app) (real Binance data).
 
 | | |
 |---|---|
@@ -100,7 +100,7 @@ All six are taken from the [live demo](https://crypto-sap-screener.vercel.app) (
 | ![Pair details](docs/img/pair-details.png) | ![Spread chart](docs/img/spread-chart.png) |
 | **Spread analysis.** z-score range, deviation percentile, mean-reversion statistics | **Spread chart.** One year of the pair's z-score with the ±1/2/3σ bands |
 | ![Live monitor](docs/img/live-monitor.png) | ![Backtest](docs/img/backtest-results.png) |
-| **Live monitor.** Live z-score vs the daily fit, hedge direction, expected edge | **Backtest.** Z-score entry/exit with costs: return, Sharpe, drawdown, MAE, Kelly |
+| **Live monitor.** Live spread z-score vs the daily fit, prices, hedge beta and alert status | **Backtest.** Equity curve, rolling z-score with entries and exits, and the trade list |
 
 ## Stack
 
